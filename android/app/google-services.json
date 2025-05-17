@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "313094166334",
+    "project_id": "telegram-message-store",
+    "storage_bucket": "telegram-message-store.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:313094166334:android:4ac7eff4b41c0cad3a7e6f",
+        "android_client_info": {
+          "package_name": "com.example.cross_platform_chat_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAdTeVNHukDgkMihCKp7pVlnf5ZfwyVP7A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
