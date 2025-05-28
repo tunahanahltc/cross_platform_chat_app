@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../constants/constants.dart';
+import '../../login_dialogs/telegram_login_dialog.dart';
 import '../../login_dialogs/twitter_login_dialog.dart';
 import '../../services/matrix_telegram_service.dart';
 import '../../login_dialogs/twitter_login_dialog.dart';
@@ -80,7 +81,7 @@ class _AccountsPageState extends State<AccountsPage> {
   Future<void> _loginTelegram() async {
     final success = await showDialog<bool>(
       context: context,
-      builder: (_) => _TelegramDialog(
+      builder: (_) => TelegramLoginDialog(
         matrixUser: _matrixUser,
         matrixService: _matrixService,
       ),
@@ -95,9 +96,23 @@ class _AccountsPageState extends State<AccountsPage> {
       _loadUser();
     }
   }
-
   Future<void> _loginTwitter() async {
-    setState(() => _twConnected = false);
+    if (_twConnected) {
+      try {
+        await _twitterService.logout();
+        final uid = FirebaseAuth.instance.currentUser!.uid;
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .set({'twitterConnected': false}, SetOptions(merge: true));
+        setState(() => _twConnected = false);
+        showToast('Twitter bağlantısı kesildi.');
+      } catch (e) {
+        showToast('Çıkış hatası: $e');
+      }
+      return;
+    }
+
     try {
       final connected = await _twitterService.connect(context);
       final uid = FirebaseAuth.instance.currentUser!.uid;
@@ -112,99 +127,17 @@ class _AccountsPageState extends State<AccountsPage> {
       );
     }
   }
-}
 
-class _TelegramDialog extends StatefulWidget {
-  final String matrixUser;
-  final TelegramMatrixService matrixService;
-  const _TelegramDialog({Key? key, required this.matrixUser, required this.matrixService}) : super(key: key);
-  @override
-  State<_TelegramDialog> createState() => _TelegramDialogState();
-}
-
-class _TelegramDialogState extends State<_TelegramDialog> {
-  int _step = 1;
-  final _phoneCtrl = TextEditingController();
-  final _codeCtrl = TextEditingController();
-  bool _busy = false;
-  String? _roomId;
-
-  @override
-  void dispose() {
-    _phoneCtrl.dispose();
-    _codeCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Telegram Giriş'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_step == 1)
-            TextField(
-              controller: _phoneCtrl,
-              decoration: const InputDecoration(labelText: 'Telefon (+90...)'),
-              keyboardType: TextInputType.phone,
-            )
-          else
-            TextField(
-              controller: _codeCtrl,
-              decoration: const InputDecoration(labelText: 'SMS Kod'),
-              keyboardType: TextInputType.number,
-            ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: _busy ? null : () => Navigator.pop(context, false),
-          child: const Text('İptal'),
-        ),
-        ElevatedButton(
-          onPressed: _busy ? null : _next,
-          child: _busy
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(_step == 1 ? 'Telefon Gönder' : 'Kod Gönder'),
-        ),
-      ],
+  void showToast(String mesaj) {
+    Fluttertoast.showToast(
+      msg: mesaj,
+      toastLength: Toast.LENGTH_SHORT,
+      gravity: ToastGravity.BOTTOM,
+      backgroundColor: Colors.black87,
+      textColor: Colors.white,
+      fontSize: 16.0,
     );
   }
-
-  Future<void> _next() async {
-    setState(() => _busy = true);
-    try {
-      if (_step == 1) {
-        _roomId ??= await widget.matrixService.createDmRoom();
-        await Future.delayed(const Duration(seconds: 1));
-        await widget.matrixService.sendMessage(_roomId!, 'login');
-        await Future.delayed(const Duration(seconds: 1));
-        await widget.matrixService.sendMessage(_roomId!, _phoneCtrl.text);
-        setState(() => _step = 2);
-      } else {
-        _roomId ??= await widget.matrixService.createDmRoom();
-        await Future.delayed(const Duration(seconds: 1));
-        await widget.matrixService.sendMessage(_roomId!, _codeCtrl.text);
-        await widget.matrixService.leaveRoom(_roomId!);
-        await widget.matrixService.forgetRoom(_roomId!);
-        Navigator.pop(context, true);
-
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
-    } finally {
-      setState(() => _busy = false);
-    }
-  }
 }
-void showToast(String mesaj) {
-  Fluttertoast.showToast(
-    msg: mesaj,
-    toastLength: Toast.LENGTH_SHORT,
-    gravity: ToastGravity.BOTTOM,
-    backgroundColor: Colors.black87,
-    textColor: Colors.white,
-    fontSize: 16.0,
-  );
-}
+
+
