@@ -1,156 +1,132 @@
 // lib/pages/chat_page.dart
+import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../services/message_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-class ChatPage extends StatefulWidget {
-  final String chatId;       // Firestore chat document ID
-  final String chatTitle;    // Başlık, örneğin kişi adı veya grup adı
+import '../../constants/constants.dart';
 
-  const ChatPage({
-    Key? key,
-    required this.chatId,
-    required this.chatTitle,
-  }) : super(key: key);
+final String _matrixBaseUrl = matrixBaseUrl;
+
+class ChatPage extends StatefulWidget {
+  final String chatId;
+  final String chatTitle;
+
+  const ChatPage({Key? key, required this.chatId, required this.chatTitle}) : super(key: key);
 
   @override
-  _ChatPageState createState() => _ChatPageState();
+  State<ChatPage> createState() => _ChatPageState();
 }
 
 class _ChatPageState extends State<ChatPage> {
+  final _storage = const FlutterSecureStorage();
   List<types.Message> _messages = [];
-  late final BlueskyMessageProvider _provider;
-  late final types.User _currentUser;
-  types.User? _peerUser;
-  String? _peerId;
+  late types.User _currentUser;
+  String? _selfId;
   bool _loading = true;
-  late final String _userEmail;
-  static const _backendUrl = 'http://64.226.102.154:8010/send_message';
+  Timer? _poller;
 
   @override
   void initState() {
     super.initState();
-    _provider = BlueskyMessageProvider();
-
-    // DB path için oturum açmış kullanıcı email'ini al
-    final authUser = FirebaseAuth.instance.currentUser;
-    _userEmail = authUser?.email ?? '';
-    // Flutter Chat UI'da bizim kullanıcı olarak email kullanalım
-    _currentUser = types.User(id: _userEmail);
-
     _initializeChat();
   }
 
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<String> _readToken() async {
+    final token = await _storage.read(key: 'access_token');
+    if (token == null) throw Exception('No access token');
+    return token;
+  }
+
   Future<void> _initializeChat() async {
-    // Firestore'dan peer userId alanını al
-    _peerId = await _provider.getChatUserId(_userEmail, widget.chatId);
-    if (_peerId != null) {
-      _peerUser = types.User(id: _peerId!);
-    }
-
-    // Mesaj akışını başlat
-    _provider.watchMessages(_userEmail, widget.chatId).listen((msgs) {
-      final chatMsgs = msgs.map((m) {
-        // m.sender değerini peerId ile karşılaştır
-        final isPeer = m.sender == _peerId;
-        final types.User author;
-        if (!isPeer) {
-          author = (_peerUser ?? types.User(id: m.sender));
-        } else {
-          author = _currentUser;
-        }
-        return types.TextMessage(
-          author: author,
-          id: m.id,
-          text: m.text,
-          createdAt: m.sentAt.millisecondsSinceEpoch,
-        );
-      }).toList().reversed.toList();
-
-      setState(() {
-        _messages = chatMsgs;
-        _loading = false;
-      });
-    });
-  }
-
-  Future<void> _sendMessageToBackend(String text) async {
-    // Kullanıcının Bluesky kullanıcı adını SharedPreferences'tan al
-    final prefs = await SharedPreferences.getInstance();
-    final bskyUsername = prefs.getString('bsky_username') ?? '';
-    if (bskyUsername.isEmpty) {
-      throw Exception('BlueSky kullanıcı adı bulunamadı.');
-    }
-
-    final uri = Uri.parse(_backendUrl);
-    final payload = {
-      'user_name':     bskyUsername,
-      'target_handle': widget.chatTitle,
-      'text':          text,
-    };
-
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
+    final token = await _readToken();
+    final whoamiResp = await http.get(
+      Uri.parse('$matrixBaseUrl/_matrix/client/v3/account/whoami?access_token=$token'),
     );
-
-    if (resp.statusCode != 200) {
-      final body = jsonDecode(resp.body);
-      final err = body['detail'] ?? resp.body;
-      throw Exception('Mesaj gönderilemedi: $err');
+    if (whoamiResp.statusCode != 200) {
+      throw Exception('Whoami failed: ${whoamiResp.body}');
     }
+    final me = jsonDecode(whoamiResp.body) as Map<String, dynamic>;
+    _selfId = me['user_id'] as String;
+    _currentUser = types.User(id: _selfId!);
+
+    await _loadMessages();
+    _poller = Timer.periodic(const Duration(seconds: 2), (_) => _loadMessages());
   }
 
-  void _handleSendPressed(types.PartialText message) {
-    _sendMessageToBackend(message.text).catchError((e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gönderme hatası: $e')),
+  Future<void> _loadMessages() async {
+    final token = await _readToken();
+    final roomIdEnc = Uri.encodeComponent(widget.chatId);
+    final resp = await http.get(
+      Uri.parse(
+        '$matrixBaseUrl/_matrix/client/v3/rooms/$roomIdEnc/messages?access_token=$token&dir=b&limit=50',
+      ),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Fetch messages failed: ${resp.body}');
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final events = (data['chunk'] as List).cast<Map<String, dynamic>>();
+
+    final msgs = events.where((e) => e['type'] == 'm.room.message').map((e) {
+      final content = e['content'] as Map<String, dynamic>;
+      if (content['msgtype'] != 'm.text') return null;
+      final sender = e['sender'] as String;
+      final author = sender == _selfId ? _currentUser : types.User(id: sender);
+      return types.TextMessage(
+        author: author,
+        id: e['event_id'] as String? ?? e['origin_server_ts'].toString(),
+        text: content['body'] as String? ?? '',
+        createdAt: e['origin_server_ts'] as int? ?? 0,
       );
+    }).whereType<types.TextMessage>().toList()
+      ..sort((b, a) => a.createdAt!.compareTo(b.createdAt?? 0));
+
+    setState(() {
+      _messages = msgs;
+      _loading = false;
     });
-    // Yerelde setState çağrısına gerek yok; Firestore akışı dinleniyor
+  }
+
+  void _handleSendPressed(types.PartialText message) async {
+    final token = await _readToken();
+    final roomIdEnc = Uri.encodeComponent(widget.chatId);
+    final resp = await http.post(
+      Uri.parse(
+        '$matrixBaseUrl/_matrix/client/v3/rooms/$roomIdEnc/send/m.room.message?access_token=$token',
+      ),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'msgtype': 'm.text', 'body': message.text}),
+    );
+    if (resp.statusCode != 200) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Send failed: ${resp.body}')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: Text(widget.chatTitle),
-      ),
+      appBar: AppBar(title: Text(widget.chatTitle)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Chat(
-          messages: _messages,
-          onSendPressed: _handleSendPressed,
-          user: _currentUser,
-          showUserAvatars: true,
-          showUserNames: true,
-
-          theme: DefaultChatTheme(
-            backgroundColor: Colors.white54 ,
-            inputBackgroundColor: Colors.white,
-            inputTextColor: Colors.black,
-            primaryColor: Colors.amber.shade800,
-            secondaryColor: Colors.cyanAccent.shade200,
-            inputContainerDecoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: Colors.grey, width: 1),
-              borderRadius: BorderRadius.circular(25),
-            ),            inputBorderRadius: BorderRadius.circular(60),
-            inputMargin: const EdgeInsets.symmetric(
-                horizontal: 20, vertical: 50),
-            inputPadding:
-            const EdgeInsets.symmetric(horizontal: 30,vertical: 5),
-          ),
-          ),
+        messages: _messages,
+        onSendPressed: _handleSendPressed,
+        user: _currentUser,
+        showUserAvatars: true,
+        showUserNames: true,
+      ),
     );
   }
 }

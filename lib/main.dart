@@ -4,7 +4,6 @@ import 'package:cross_platform_chat_app/pages/profile/profile_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firabase/background_fetch.dart';
 import 'pages/splash/splash_page.dart';
 
 void main() async {
