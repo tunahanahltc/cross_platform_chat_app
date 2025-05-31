@@ -3,12 +3,11 @@ import 'dart:async';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-class TelegramMatrixService {
+class WhatsappMatrixService {
   final String homeserverUrl;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
-  TelegramMatrixService({required this.homeserverUrl});
-
+  WhatsappMatrixService({required this.homeserverUrl});
   /// Matrix login: fetches and stores access_token securely
   Future<void> matrixLogin(String user, String password) async {
     final response = await http.post(

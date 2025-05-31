@@ -22,6 +22,7 @@ class _ChatListPageState extends State<ChatListPage> {
 
   Future<void> _loadData() async {
     await _chatService.startPolling((rooms) {
+      if (!mounted) return;
       setState(() {
         _rooms = rooms;
         _loading = false;
@@ -54,12 +55,58 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   Widget _buildRoomTile(Map<String, String> room) {
+    Widget leading;
+
+    switch (room['platform']) {
+      case 'telegram':
+        leading = const CircleAvatar(
+          backgroundImage: AssetImage('assets/telegram.png'),
+          backgroundColor: Colors.white,
+        );
+        break;
+      case 'twitter':
+        leading = const CircleAvatar(
+          backgroundImage: AssetImage('assets/twitter.png'),
+          backgroundColor: Colors.white,
+        );
+        break;
+      case 'bluesky':
+        leading = const CircleAvatar(
+          backgroundImage: AssetImage('assets/bluesky-icon.png'),
+          backgroundColor: Colors.white,
+        );
+        break;
+      case 'instagramgo':
+        leading = const CircleAvatar(
+          backgroundImage: AssetImage('assets/instagram.png'),
+          backgroundColor: Colors.white,
+        );
+        break;
+      case 'whatsapp':
+        leading = const CircleAvatar(
+          backgroundImage: AssetImage('assets/whatsapp.png'),
+          backgroundColor: Colors.white,
+        );
+        break;
+      case 'matrix':
+      default:
+        leading = const CircleAvatar(
+          child: Icon(Icons.message),
+        );
+    }
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: ListTile(
-        leading: const CircleAvatar(child: Icon(Icons.chat)),
-        title: Text(room['name']!),
-        subtitle: Text(room['roomId']!),
+        leading: leading,
+        title: Text(room['name'] ?? ''),
+        subtitle: Text(
+          room['lastMessage']?.isNotEmpty == true
+              ? room['lastMessage']!
+              : '',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         onTap: () {
           Navigator.push(
             context,

@@ -4,7 +4,7 @@ import '../services/matrix_telegram_service.dart';
 
 class TelegramLoginDialog extends StatefulWidget {
   final String matrixUser;
-  final TelegramMatrixService matrixService;
+  final WhatsappMatrixService matrixService;
   const TelegramLoginDialog({Key? key, required this.matrixUser, required this.matrixService}) : super(key: key);
 
   @override
