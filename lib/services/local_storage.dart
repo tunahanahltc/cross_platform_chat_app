@@ -61,6 +61,8 @@ class LLocalStorage {
         'author': msg.author.id,
       };
     }
+    
+
     return {}; // unsupported
   }
 

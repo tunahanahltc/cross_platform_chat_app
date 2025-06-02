@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
 import 'package:http/http.dart' as http;
 import '../constants/constants.dart';
+import 'download_image.dart';
 import 'local_storage.dart';
 
 class MessageSyncService {
@@ -59,7 +60,33 @@ class MessageSyncService {
           );
         }
       }
+      else if (msgType == 'm.image') {
+        final mxcUrl = content['url'];
+        final filename = content['body'] ?? 'image.jpg';
+        final mimeType = content['info']?['mimetype'] ?? 'image/jpeg';
+        final size = content['info']?['size'] ?? 0;
 
+        if (mxcUrl != null) {
+          final downloadedPath = await ImageDownloader.downloadIfNeeded(
+            mxcUrl,
+            id,
+            filename,
+            accessToken,
+          );
+
+          if (downloadedPath != null) {
+            msg = types.FileMessage(
+              id: id,
+              author: author,
+              name: filename,
+              size: size,
+              uri: downloadedPath, // LOCAL path
+              mimeType: mimeType,
+              createdAt: createdAt,
+            );
+          }
+        }
+      }
       if (msg != null) {
         await LLocalStorage.saveSingleMessage(roomId, msg);
         if (sender != currentUserId) {

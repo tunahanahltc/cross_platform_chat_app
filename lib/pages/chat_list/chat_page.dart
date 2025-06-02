@@ -2,19 +2,24 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../constants/constants.dart';
+import '../../models/image_message_widget.dart';
+import '../../services/download_image.dart';
 import '../../services/local_storage.dart';
 import '../../services/message_sync_service.dart';
 import '../../services/audio_sender.dart';
 import '../../services/voice_recorder.dart';
 import '../../services/audio_downloader.dart';
+import '../../services/image_sender.dart';
 import 'audio_message_builder.dart';
 
 final String _matrixBaseUrl = matrixBaseUrl;
@@ -24,7 +29,7 @@ class ChatPage extends StatefulWidget {
   final String chatTitle;
 
   const ChatPage({Key? key, required this.chatId, required this.chatTitle})
-    : super(key: key);
+      : super(key: key);
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -69,10 +74,10 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _initializeChat() async {
     final token = await _readToken();
+    // Doğru interpolasyon: çift tırnak ve $ işaretleri direkt kullanıldı
     final whoamiResp = await http.get(
       Uri.parse(
-        '$_matrixBaseUrl/_matrix/client/v3/account/whoami?access_token=$token',
-      ),
+          '$_matrixBaseUrl/_matrix/client/v3/account/whoami?access_token=$token'),
     );
     if (whoamiResp.statusCode != 200) {
       throw Exception('Whoami failed: ${whoamiResp.body}');
@@ -85,7 +90,7 @@ class _ChatPageState extends State<ChatPage> {
     setState(() {
       _messages = storedMessages;
       _messages.sort((a, b) => a.createdAt!.compareTo(b.createdAt!));
-      _loading = false;
+      _loading = false; // Burada artık false olacak
     });
 
     _poller = Timer.periodic(const Duration(seconds: 2), (_) async {
@@ -104,7 +109,9 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _handleSendAudioMessage(String path) async {
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final timestamp = DateTime
+        .now()
+        .millisecondsSinceEpoch;
     final localId = 'local_audio_$timestamp';
 
     setState(() {
@@ -129,10 +136,69 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  void _handleSendImageMessage(File imageFile) async {
+    final timestamp = DateTime
+        .now()
+        .millisecondsSinceEpoch;
+    final localId = 'local_image_$timestamp';
+
+    setState(() {
+      _messages.add(
+        types.FileMessage(
+          author: _currentUser,
+          id: localId,
+          name: 'Görsel',
+          size: imageFile.lengthSync(),
+          uri: imageFile.path,
+          mimeType: 'image/jpeg',
+          createdAt: timestamp,
+        ),
+      );
+      _messages.sort((a, b) => a.createdAt!.compareTo(b.createdAt!));
+    });
+
+    final token = await _readToken();
+    await ImageSenderService.sendImage(
+      imageFile: imageFile,
+      accessToken: token,
+      roomId: widget.chatId,
+    );
+  }
+
+  void _showImagePicker() async {
+    final picker = ImagePicker();
+    final source = await showDialog<ImageSource>(
+      context: context,
+      builder: (context) =>
+          AlertDialog(
+            title: const Text('Fotoğraf Gönder'),
+            content: const Text('Fotoğrafı nereden seçmek istiyorsun?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, ImageSource.camera),
+                child: const Text('Kamera'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, ImageSource.gallery),
+                child: const Text('Galeri'),
+              ),
+            ],
+          ),
+    );
+
+    if (source == null) return;
+    final picked = await picker.pickImage(source: source, imageQuality: 85);
+    if (picked != null) {
+      _handleSendImageMessage(File(picked.path));
+    }
+  }
+
   void _handleSendPressed(types.PartialText message) async {
     final token = await _readToken();
     final roomIdEnc = Uri.encodeComponent(widget.chatId);
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final timestamp = DateTime
+        .now()
+        .millisecondsSinceEpoch;
     final localId = 'local_$timestamp';
 
     setState(() {
@@ -149,8 +215,7 @@ class _ChatPageState extends State<ChatPage> {
 
     await http.post(
       Uri.parse(
-        '$_matrixBaseUrl/_matrix/client/v3/rooms/$roomIdEnc/send/m.room.message?access_token=$token',
-      ),
+          '$_matrixBaseUrl/_matrix/client/v3/rooms/$roomIdEnc/send/m.room.message?access_token=$token'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'msgtype': 'm.text', 'body': message.text}),
     );
@@ -162,13 +227,9 @@ class _ChatPageState extends State<ChatPage> {
     setState(() {
       _isRecording = true;
     });
-
-    _stopwatch = Stopwatch()..start();
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      // Süre güncellemesi yapılmayacak
-    });
-
+    _stopwatch = Stopwatch()
+      ..start();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {});
     await VoiceRecorderService.startRecording();
   }
 
@@ -176,49 +237,82 @@ class _ChatPageState extends State<ChatPage> {
     _timer.cancel();
     _stopwatch.stop();
     setState(() => _isRecording = false);
-
     final path = await VoiceRecorderService.stopRecording();
     if (path != null) {
       _handleSendAudioMessage(path);
     }
   }
 
+  Widget _buildImageMessage(types.FileMessage msg) {
+    // Eğer uri yerel bir dosya yoluysa (başında “/” var), direkt göster:
+    if (msg.uri.startsWith('/')) {
+      return ImageMessageWidget(
+        localPath: msg.uri,
+        isMe: msg.author.id == _selfId,
+      );
+    }
+
+    // Aksi halde, mxc://… şeklindeki uzaktaki resmi indir ve öyle göster:
+    return FutureBuilder<String?>(
+      future: _storage.read(key: 'access_token').then((token) {
+        if (token == null) return null;
+        return ImageDownloader.downloadIfNeeded(
+          msg.uri,               // muhtemelen "mxc://..." şeklinde
+          msg.id,
+          msg.name ?? 'image.jpg',
+          token,
+        );
+      }),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(12),
+            child: CircularProgressIndicator(),
+          );
+        }
+        if (!snapshot.hasData || snapshot.data == null) {
+          return const SizedBox.shrink();
+        }
+        return ImageMessageWidget(
+          localPath: snapshot.data!,
+          isMe: msg.author.id == _selfId,
+        );
+      },
+    );
+  }
+
+
   Widget _buildTextBubble(types.TextMessage msg) {
     final isMe = msg.author.id == _selfId;
-    final time =
-        msg.createdAt != null
-            ? DateFormat(
-              'HH:mm',
-            ).format(DateTime.fromMillisecondsSinceEpoch(msg.createdAt!))
-            : '';
+    final time = msg.createdAt != null
+        ? DateFormat('HH:mm').format(
+        DateTime.fromMillisecondsSinceEpoch(msg.createdAt!))
+        : '';
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: isMe ? const EdgeInsets.only(left: 50, right: 2, bottom: 2, top: 2)
-        :const EdgeInsets.only(left: 2, right: 50, bottom: 2, top: 2),
+        margin: isMe
+            ? const EdgeInsets.only(left: 50, right: 2, bottom: 2, top: 2)
+            : const EdgeInsets.only(left: 2, right: 50, bottom: 2, top: 2),
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
         decoration: BoxDecoration(
           color: isMe ? Colors.amber : Colors.grey.shade300,
           borderRadius: BorderRadius.only(
-            topLeft:  Radius.circular(isMe ? 16 : 25),
-            topRight:  Radius.circular(isMe ? 25 : 16),
+            topLeft: Radius.circular(isMe ? 16 : 25),
+            topRight: Radius.circular(isMe ? 25 : 16),
             bottomLeft: Radius.circular(isMe ? 16 : 0),
             bottomRight: Radius.circular(isMe ? 0 : 16),
           ),
         ),
         child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment
+              .start,
           children: [
-            Text(
-              msg.text,
-              style: const TextStyle(color: Colors.black, fontSize: 16),
-            ),
+            Text(msg.text,
+                style: const TextStyle(color: Colors.black, fontSize: 16)),
             const SizedBox(height: 4),
-            Text(
-              time,
-              style: const TextStyle(color: Colors.black54, fontSize: 11),
-            ),
+            Text(time,
+                style: const TextStyle(color: Colors.black54, fontSize: 11)),
           ],
         ),
       ),
@@ -228,19 +322,13 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildFileMessage(types.FileMessage msg) {
     final isAudio = msg.mimeType?.startsWith('audio/') ?? false;
     if (!isAudio) return const SizedBox.shrink();
-
     if (msg.uri.startsWith('/')) {
-      // Zaten local
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: AudioMessageBubble(
-          localPath: msg.uri,
-          isMe: msg.author.id == _selfId,
-        ),
+            localPath: msg.uri, isMe: msg.author.id == _selfId),
       );
     }
-
-    // Yeni özel widget'la çöz
     return AudioMessageWithDownloader(
       uri: msg.uri,
       msgId: msg.id,
@@ -249,184 +337,197 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  // lib/pages/chat_page.dart
-
-  // (diğer importlar sabit kalabilir)
-
-  // ... yukarıdaki kodlar değişmedi ...
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-          shadowColor: Colors.black,
-          elevation: 0.5,
-backgroundColor: Colors.white,
-          foregroundColor:  Colors.black,
-          scrolledUnderElevation: 0.5,
-
-          title: Text(widget.chatTitle)
-      ),
-      body:
-          _loading
-              ? const Center(child: CircularProgressIndicator())
-              :
-          Stack(
-            children: [
-          // Arka plan
-          Positioned.fill(
-          child: Image.asset(
-
-            'assets/backgroundImage.png',
-            fit: BoxFit.cover,
+        shadowColor: Colors.black,
+        elevation: 0.5,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        scrolledUnderElevation: 0.5,
+        title: Text(widget.chatTitle),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.image),
+            onPressed: _showImagePicker,
           ),
-    ),
-
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Stack(
+        children: [
+          // Arka plan (isteğe bağlı)
+          Positioned.fill(
+            child: Image.asset(
+              'assets/backgroundImage.png',
+              fit: BoxFit.cover,
+            ),
+          ),
           Column(
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      key: const PageStorageKey<String>('chat_list'),
-                      controller: _scrollController,
-                      padding: const EdgeInsets.all(12),
-                      reverse: true,
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
-                        final message = _messages[_messages.length - 1 - index];
-                        if (message is types.TextMessage) {
-                          return _buildTextBubble(message);
-                        }
-                        if (message is types.FileMessage) {
-                          return _buildFileMessage(message);
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0,
-                      vertical: 4.0,
-                    ),
-                    child: SafeArea(
-                      child: StatefulBuilder(
-                        builder: (context, setInnerState) {
-                          return Row(
-                            children: [
-                              _isRecording
-                                  ? Expanded(
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
-                                        horizontal: 16,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey[300],
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.mic,
-                                            color: Colors.red,
-                                          ),
-                                          const SizedBox(width: 10),
-                                          const Text(
-                                            "Kayıt yapılıyor...",
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          IconButton(
-                                            icon: const Icon(Icons.close),
-                                            onPressed: () async {
-                                              _timer.cancel();
-                                              _stopwatch.stop();
-                                              await VoiceRecorderService.stopRecording();
-                                              setInnerState(
-                                                () => _isRecording = false,
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                  : Expanded(
-                                    child: TextField(
-
-                                      controller: _textController,
-                                      onSubmitted: (txt) {
-                                        if (txt.trim().isEmpty) return;
-                                        _handleSendPressed(
-                                          types.PartialText(text: txt),
-                                        );
-                                      },
-                                      textInputAction: TextInputAction.send,
-                                      decoration: const InputDecoration(
-                                        filled: true,
-                                        fillColor: Colors.white, // arka plan rengi
-                                        hintText: 'Mesaj yazın...',
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.all(
-                                            Radius.circular(8),
-                                          ),
-                                        ),
-                                        contentPadding: EdgeInsets.symmetric(
-                                          vertical: 10,
-                                          horizontal: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              const SizedBox(width: 8),
-                              Listener(
-                                onPointerDown: (_) => _startRecording(),
-                                onPointerUp: (_) => _stopRecording(),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.redAccent,
-                                    borderRadius: BorderRadius.circular(50),
-                                  ),
-                                  padding: const EdgeInsets.all(12),
-                                  child: const Icon(
-                                    Icons.mic,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.amber,
-                                  borderRadius: BorderRadius.circular(50),
-                                ),
-                                child: IconButton(
-                                  icon: const Icon(Icons.send),
-                                  onPressed: () {
-                                    final txt = _textController.text.trim();
-                                    if (txt.isEmpty) return;
-                                    _handleSendPressed(
-                                      types.PartialText(text: txt),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
+            children: [
+              // 🟢 Burada ListView.builder yer alıyor
+              Expanded(
+                child: ListView.builder(
+                  key: const PageStorageKey<String>('chat_list'),
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(12),
+                  reverse: true,
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) {
+                    final message = _messages[_messages.length - 1 - index];
+                    if (message is types.TextMessage) {
+                      return _buildTextBubble(message);
+                    }
+                    if (message is types.FileMessage) {
+                      final isImage = message.mimeType?.startsWith('image/') ??
+                          false;
+                      if (isImage) return _buildImageMessage(message);
+                      return _buildFileMessage(message);
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
               ),
-    ]
-    )
-    );
 
+              // 🟢 Mesaj yazma alanı, ses/görsel gönderme butonları buraya gelecek
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8.0,
+                  vertical: 4.0,
+                ),
+                child: SafeArea(
+                  child: StatefulBuilder(
+                    builder: (context, setInnerState) {
+                      return Row(
+                        children: [
+                          _isRecording
+                              ? Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 12,
+                                horizontal: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[300],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.mic,
+                                    color: Colors.red,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  const Text(
+                                    "Kayıt yapılıyor...",
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  IconButton(
+                                    icon: const Icon(Icons.close),
+                                    onPressed: () async {
+                                      _timer.cancel();
+                                      _stopwatch.stop();
+                                      await VoiceRecorderService
+                                          .stopRecording();
+                                      setInnerState(() => _isRecording = false);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                              : Expanded(
+                            child: TextField(
+                              controller: _textController,
+                              onSubmitted: (txt) {
+                                if (txt
+                                    .trim()
+                                    .isEmpty) return;
+                                _handleSendPressed(
+                                  types.PartialText(text: txt),
+                                );
+                              },
+                              textInputAction: TextInputAction.send,
+                              decoration: const InputDecoration(
+                                filled: true,
+                                fillColor: Colors.white,
+                                hintText: 'Mesaj yazın...',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(8),
+                                  ),
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 10,
+                                  horizontal: 12,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+
+                          // Ses gönderme butonu
+                          Listener(
+                            onPointerDown: (_) => _startRecording(),
+                            onPointerUp: (_) => _stopRecording(),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent,
+                                borderRadius: BorderRadius.circular(50),
+                              ),
+                              padding: const EdgeInsets.all(12),
+                              child: const Icon(
+                                Icons.mic,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(width: 8),
+
+                          // Görsel gönderme butonu
+                          IconButton(
+                            icon: const Icon(Icons.image),
+                            onPressed: _showImagePicker,
+                          ),
+
+                          const SizedBox(width: 8),
+
+                          // Metin gönderme butonu
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.amber,
+                              borderRadius: BorderRadius.circular(50),
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.send),
+                              onPressed: () {
+                                final txt = _textController.text.trim();
+                                if (txt.isEmpty) return;
+                                _handleSendPressed(
+                                  types.PartialText(text: txt),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
