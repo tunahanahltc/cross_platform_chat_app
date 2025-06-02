@@ -47,7 +47,8 @@ class _ChatListPageState extends State<ChatListPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sohbetler')),
+      backgroundColor: Colors.white,
+
       body: ListView(
         children: _rooms.map((room) => _buildRoomTile(room)).toList(),
       ),
@@ -56,7 +57,6 @@ class _ChatListPageState extends State<ChatListPage> {
 
   Widget _buildRoomTile(Map<String, String> room) {
     Widget leading;
-
     switch (room['platform']) {
       case 'telegram':
         leading = const CircleAvatar(
@@ -96,6 +96,10 @@ class _ChatListPageState extends State<ChatListPage> {
     }
 
     return Card(
+      color: Colors.white,
+      shadowColor: Colors.grey.shade200,
+      elevation: 1.8,
+
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: ListTile(
         leading: leading,

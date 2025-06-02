@@ -26,6 +26,7 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         shadowColor: Colors.black,
         elevation: 0.5,
+        scrolledUnderElevation: 0.5,
         title: const Text(
           'CHATTY',
           style: TextStyle(color: Colors.orangeAccent, fontFamily: "MyTitleFont"),
