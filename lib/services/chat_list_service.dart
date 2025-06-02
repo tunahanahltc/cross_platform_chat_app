@@ -13,7 +13,7 @@ class ChatListService {
   Future<void> startPolling(Function(List<Map<String, String>>) onUpdate) async {
     await _loadRooms(onUpdate);
     _poller = Timer.periodic(
-      const Duration(seconds: 10),
+      const Duration(seconds: 5),
           (_) => _loadRooms(onUpdate),
     );
   }

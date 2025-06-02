@@ -1,3 +1,5 @@
+import 'package:cross_platform_chat_app/login_dialogs/bluesky_login_dialog.dart';
+import 'package:cross_platform_chat_app/services/matrix_bluesky_service.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -210,7 +212,43 @@ class _AccountsPageState extends State<AccountsPage> {
               ),
                 ]
               ),
+            ),
+            SizedBox(height: 15,),
+            Center(
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(width: 20,),
+                    SizedBox(
+                        width: 100,
+                        child: Text(
+                          "Bluesky",
+                          style: TextStyle(color: Colors.black,fontWeight: FontWeight.bold,fontSize: 20),
+                        )
+                    ),
+                    SizedBox(width: 20,),
+                    SizedBox(
+                      width: 175,
+                      height: 50,
+                      child:ElevatedButton(
+                        onPressed: _loginBluesky,
+                        style: ButtonStyle(
+                          backgroundColor: WidgetStateProperty.all(
+                            _waConnected ? Colors.red : Colors.amber,
+                          ),
+                        ),
+                        child: Text(_waConnected ? 'Bluesky Çıkış' : 'Bluesky Giriş',
+                          style: TextStyle(
+                              color: _waConnected ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.w900
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]
+              ),
             )
+
 
           ],
         ),
@@ -313,6 +351,26 @@ class _AccountsPageState extends State<AccountsPage> {
       _loadUser();
     }
   }
+
+  Future<void> _loginBluesky() async {
+    final success = await showDialog<bool>(
+      context: context,
+      builder:
+          (_) => BlueskyLoginDialog(
+        service: BlueskyMatrixService(homeserverUrl:matrixBaseUrl),
+             botMatrixId: "@blueskybot:localhost",
+      ),
+    );
+
+    if (success == true) {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'whatsappConnected': true,
+      }, SetOptions(merge: true));
+      _loadUser();
+    }
+  }
+
 
   void showToast(String mesaj) {
     Fluttertoast.showToast(
