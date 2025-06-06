@@ -41,7 +41,7 @@ class AudioSenderService {
         'body': 'Voice message',
         'url': contentUri,
         'info': {
-          'mimetype': 'audio/aac',
+          'mimetype': 'audio/mpeg',
           'size': bytes.length,
         }
       }),
@@ -55,7 +55,7 @@ class AudioSenderService {
 
     final response = await http.post(
       uploadUri,
-      headers: {'Content-Type': 'audio/aac'},
+      headers: {'Content-Type': 'audio/ogg'},
       body: bytes,
     );
 

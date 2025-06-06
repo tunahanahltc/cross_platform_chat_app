@@ -3,6 +3,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+// Yeni eklenenlar:
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:cross_platform_chat_app/constants/constants.dart';
+
+import '../accounts/login.dart';
+
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
@@ -10,7 +17,10 @@ class ProfilePage extends StatelessWidget {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return null;
 
-    final doc = await FirebaseFirestore.instance.collection('usersInformation').doc(uid).get();
+    final doc = await FirebaseFirestore.instance
+        .collection('usersInformation')
+        .doc(uid)
+        .get();
     return doc.data();
   }
 
@@ -20,13 +30,15 @@ class ProfilePage extends StatelessWidget {
     final photoUrl = user?.photoURL;
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
+        backgroundColor: Colors.white,
         title: const Text("Profil"),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await FirebaseAuth.instance.signOut();
+              await _logoutFromBoth(context);
             },
             tooltip: "Çıkış Yap",
           ),
@@ -56,10 +68,10 @@ class ProfilePage extends StatelessWidget {
                 Center(
                   child: CircleAvatar(
                     radius: 50,
-
                     backgroundImage: photoUrl != null
                         ? NetworkImage(photoUrl)
-                        : const AssetImage('assets/default_avatar.png') as ImageProvider,
+                        : const AssetImage('assets/default_avatar.png')
+                    as ImageProvider,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -70,7 +82,7 @@ class ProfilePage extends StatelessWidget {
                 const Spacer(),
                 ElevatedButton.icon(
                   onPressed: () async {
-                    await FirebaseAuth.instance.signOut();
+                    await _logoutFromBoth(context);
                   },
                   icon: const Icon(Icons.logout),
                   label: const Text("Çıkış Yap"),
@@ -98,5 +110,44 @@ class ProfilePage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _logoutFromBoth(BuildContext context) async {
+    final storage = const FlutterSecureStorage();
+
+    // 1) Synapse (Matrix) logout
+    try {
+      final accessToken = await storage.read(key: 'access_token');
+      if (accessToken != null) {
+        final logoutUrl =
+        Uri.parse('$matrixBaseUrl/_matrix/client/v3/logout');
+        final res = await http.post(
+          logoutUrl,
+          headers: {'Authorization': 'Bearer $accessToken'},
+        );
+        // Zorunlu değil ama statusCode kontrol edebilirsin:
+        if (res.statusCode != 200) {
+          debugPrint('Matrix logout hata: ${res.statusCode} ${res.body}');
+        }
+      }
+      // Storage'daki Matrix bilgilerini sil
+      await storage.delete(key: 'matrixUsername');
+      await storage.delete(key: 'matrixPassword');
+      await storage.delete(key: 'access_token');
+    } catch (e) {
+      debugPrint('Matrix logout sırasında hata: $e');
+    }
+
+    // 2) FirebaseAuth logout
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      debugPrint('FirebaseAuth logout sırasında hata: $e');
+    }
+
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const Login()),
+     );
   }
 }

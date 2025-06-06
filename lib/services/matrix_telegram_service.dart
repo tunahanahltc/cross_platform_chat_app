@@ -1,13 +1,14 @@
 import 'dart:convert';
 import 'dart:async';
+import 'package:cross_platform_chat_app/constants/constants.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-class WhatsappMatrixService {
+class TelegramMatrixService {
   final String homeserverUrl;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
-  WhatsappMatrixService({required this.homeserverUrl});
+  TelegramMatrixService({required this.homeserverUrl});
   /// Matrix login: fetches and stores access_token securely
   Future<void> matrixLogin(String user, String password) async {
     final response = await http.post(
@@ -101,8 +102,69 @@ class WhatsappMatrixService {
     }
   }
 
-  /// Logout: clear stored token
-  Future<void> logout() async {
-    await _storage.delete(key: 'access_token');
+  /// Telegram botla logout komutu gönder (token silinmez)
+  Future<void> logoutWithTelegramBot() async {
+    try {
+      final token = await _getAccessToken();
+
+      // DM odası oluştur
+      final createResp = await http.post(
+        Uri.parse('$homeserverUrl/_matrix/client/v3/createRoom?access_token=$token'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'invite': ['@telegrambot:localhost'],
+          'is_direct': true,
+        }),
+      );
+      if (createResp.statusCode != 200) {
+        throw Exception('DM room creation failed: ${createResp.body}');
+      }
+      final roomId = jsonDecode(createResp.body)['room_id'];
+
+      // 1 saniye bekle
+      await Future.delayed(const Duration(seconds: 1));
+
+      // "logout" mesajı gönder
+      final sendResp = await http.post(
+        Uri.parse('$homeserverUrl/_matrix/client/v3/rooms/$roomId/send/m.room.message?access_token=$token'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'msgtype': 'm.text',
+          'body': 'logout',
+        }),
+      );
+
+    } catch (e) {
+      throw Exception('Logout sırasında hata oluştu: $e');
+    }
   }
+
+  Future<String?> getLastBotMessage(String roomId) async {
+    final token = await _getAccessToken();
+
+    final resp = await http.get(
+      Uri.parse('$matrixBaseUrl/_matrix/client/v3/rooms/$roomId/messages?dir=b&limit=10'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    final messages = jsonDecode(resp.body)['chunk'];
+    for (var msg in messages) {
+      if (msg['sender'] != '@telegrambot:localhost' || msg['type'] != 'm.room.message') continue;
+
+      final content = msg['content'];
+      final formatted = content['formatted_body'];
+      final body = content['body'];
+
+      final text = formatted ?? body ?? '';
+
+      // Kod regex: hem `ABCD-1234` gibi harf-rakam içeren hem de <code>...</code> içinde
+      final match = RegExp(r'<code>([\w\-]+)<\/code>').firstMatch(text);
+      if (match != null) {
+        return match.group(1); // örnek: S6VT-ZRWF
+      }
+    }
+
+    return null;
+  }
+
 }

@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -336,6 +335,17 @@ class _ChatPageState extends State<ChatPage> {
       isMe: msg.author.id == _selfId,
     );
   }
+  Widget _buildMessageWidget(types.Message message) {
+    if (message is types.TextMessage) {
+      return _buildTextBubble(message);
+    }
+    if (message is types.FileMessage) {
+      final isImage = message.mimeType?.startsWith('image/') ?? false;
+      if (isImage) return _buildImageMessage(message);
+      return _buildFileMessage(message);
+    }
+    return const SizedBox.shrink();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -378,19 +388,15 @@ class _ChatPageState extends State<ChatPage> {
                   itemCount: _messages.length,
                   itemBuilder: (context, index) {
                     final message = _messages[_messages.length - 1 - index];
-                    if (message is types.TextMessage) {
-                      return _buildTextBubble(message);
-                    }
-                    if (message is types.FileMessage) {
-                      final isImage = message.mimeType?.startsWith('image/') ??
-                          false;
-                      if (isImage) return _buildImageMessage(message);
-                      return _buildFileMessage(message);
-                    }
-                    return const SizedBox.shrink();
+
+                    return KeyedSubtree(
+                      key: ValueKey(message.id), // 💥 Önemli! Her mesajı benzersiz yapar
+                      child: _buildMessageWidget(message),
+                    );
                   },
                 ),
               ),
+
 
               // 🟢 Mesaj yazma alanı, ses/görsel gönderme butonları buraya gelecek
               Padding(

@@ -39,7 +39,7 @@ class _BlueskyLoginDialogState extends State<BlueskyLoginDialog> {
       return;
     }
 
-    // Bluesky handle’ı "aaaa.bbbb.cccc" formatında, ama bridge bot önce domain'i istiyor:
+    // "aaaa.bbbb.cccc" → domain kısmını ayır
     final parts = fullUsername.split('.');
     String domain;
     if (parts.length >= 2) {
@@ -54,29 +54,34 @@ class _BlueskyLoginDialogState extends State<BlueskyLoginDialog> {
     });
 
     try {
-      // 1) Önce bot’la bir DM odası açalım:
-      final roomId = await widget.service
-          .createDmRoomWithBluesky(widget.botMatrixId);
+      // 1) Bot ile DM odası aç
+      final roomId = await widget.service.createDmRoomWithBluesky(widget.botMatrixId);
       await Future.delayed(const Duration(seconds: 2));
-      // 2) "!bsky login" komutunu gönder
+
+      // 2) Komutları sırayla gönder
       await widget.service.sendMessage(roomId, "!bsky login");
       await Future.delayed(const Duration(seconds: 2));
 
-      // 3) Domain’i gönder (ör. "xxxxxx.yyyy")
-      await widget.service.sendMessage(roomId,  "!bsky $domain");
+      await widget.service.sendMessage(roomId, "!bsky $domain");
       await Future.delayed(const Duration(seconds: 3));
 
-      // 4) Full kullanıcı adını gönder (ör. "aaaaaaaaa.xxxxxx.yyyy")
       await widget.service.sendMessage(roomId, "!bsky $fullUsername");
       await Future.delayed(const Duration(seconds: 3));
 
-      // 5) App şifresini gönder
       await widget.service.sendMessage(roomId, "!bsky $appPassword");
 
-      // 6) Biraz bekleyip bot’un son cevabını alalım
+      // 3) Bot cevabını al
       await Future.delayed(const Duration(seconds: 2));
       final lastBotMsg = await widget.service.getLastBotMessage(roomId);
       setState(() => _botResponse = lastBotMsg ?? 'Bot’tan cevap alınamadı.');
+
+      // 4) Başarı mesajı varsa dialogdan başarıyla çık
+      if (lastBotMsg != null && lastBotMsg.contains("Successfully logged in as")) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          Navigator.of(context).pop(true);
+        });
+      }
+
     } catch (e) {
       setState(() => _botResponse = 'Hata: $e');
     } finally {

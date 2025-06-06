@@ -143,16 +143,12 @@ class BlueskyMatrixService {
     }
   }
 
-  /// 8) Oda içindeki en son bot mesajını alır.
-  ///    Bu metot, Matrix’in /messages endpoint’ini kullanarak backward yönlü, limit=1 ile
-  ///    en son event’i çekiyor. Eğer tip 'm.room.message' ise, içindeki 'body'’yi döner.
   Future<String?> getLastBotMessage(String roomId) async {
     final token = await _getAccessToken();
     final uri = Uri.parse(
       '$homeserverUrl/_matrix/client/v3/rooms/$roomId/messages'
           '?access_token=$token&dir=b&limit=1',
     );
-
     final response = await http.get(
       uri,
       headers: {'Content-Type': 'application/json'},
@@ -174,5 +170,66 @@ class BlueskyMatrixService {
     return null;
   }
 
+  Future<void> logoutFromBluesky(String blueskyBotMxid) async {
+    final token = await _getAccessToken();
+
+    // 1. Odayı bul veya oluştur
+    final roomId = await createDmRoomWithBluesky(blueskyBotMxid);
+
+    // 2. !bsky list-logins komutunu gönder
+    await http.post(
+      Uri.parse('$homeserverUrl/_matrix/client/v3/rooms/$roomId/send/m.room.message'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        "msgtype": "m.text",
+        "body": "!bsky list-logins",
+      }),
+    );
+    await Future.delayed(const Duration(seconds: 1));
+    final resp = await http.get(
+      Uri.parse('$homeserverUrl/_matrix/client/v3/rooms/$roomId/messages?dir=b&limit=10'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final messages = jsonDecode(resp.body)['chunk'];
+    String? loginId;
+
+    for (var msg in messages) {
+      if (msg['sender'] != blueskyBotMxid || msg['type'] != 'm.room.message') continue;
+      final content = msg['content'];
+      final formatted = content['formatted_body'];
+      final body = content['body'];
+      final text = formatted ?? body ?? '';
+      final match = RegExp(r'<code>([\w\-]+)<\/code>').firstMatch(text);
+      if (match != null) {
+        loginId = match.group(1);
+        break;
+      }
+      final fallbackMatch = RegExp(r'Login ID:\s*([\w\-]+)').firstMatch(text);
+      if (fallbackMatch != null) {
+        loginId = fallbackMatch.group(1);
+        break;
+      }
+    }
+    if (loginId == null) {
+      print("⚠️ Bluesky login ID bulunamadı.");
+      return;
+    }
+    final logoutCommand = "!bsky logout $loginId";
+    await http.post(
+      Uri.parse('$homeserverUrl/_matrix/client/v3/rooms/$roomId/send/m.room.message'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        "msgtype": "m.text",
+        "body": logoutCommand,
+      }),
+    );
+    print("✅ Bluesky çıkışı gönderildi: $logoutCommand");
+  }
 
 }

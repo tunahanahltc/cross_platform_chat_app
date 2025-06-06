@@ -28,34 +28,9 @@ class WhatsAppService {
     return data['user_id'];
   }
 
-  Future<String> _getOrCreateRoomWithBot() async {
+  Future<String> _createRoomWithBot(String botMxid) async {
     final token = await _readToken();
-    final selfId = await _getSelfId();
 
-    // Check existing rooms
-    final joinedResp = await http.get(
-      Uri.parse('$matrixBaseUrl/_matrix/client/v3/joined_rooms'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    final rooms = List<String>.from(
-        jsonDecode(joinedResp.body)['joined_rooms']);
-
-    for (final roomId in rooms) {
-      final membersResp = await http.get(
-        Uri.parse(
-            '$matrixBaseUrl/_matrix/client/v3/rooms/$roomId/joined_members'),
-        headers: {'Authorization': 'Bearer $token'},
-      );
-
-      final members = (jsonDecode(membersResp.body)['joined'] as Map<
-          String,
-          dynamic>).keys.toList();
-      if (members.contains(whatsappBotMxid)) {
-        return roomId;
-      }
-    }
-
-    // Create room if not found
     final createResp = await http.post(
       Uri.parse('$matrixBaseUrl/_matrix/client/v3/createRoom'),
       headers: {
@@ -63,19 +38,24 @@ class WhatsAppService {
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
-        "invite": [whatsappBotMxid],
+        "invite": [botMxid],
         "is_direct": true,
         "preset": "trusted_private_chat",
       }),
     );
 
+    if (createResp.statusCode != 200) {
+      throw Exception("Oda oluşturulamadı: ${createResp.body}");
+    }
+
     final data = jsonDecode(createResp.body);
     return data['room_id'];
   }
 
-  Future<void> sendLoginCommand() async {
+
+  Future<String> sendLoginCommand() async {
     final token = await _readToken();
-    final roomId = await _getOrCreateRoomWithBot();
+    final roomId = await _createRoomWithBot(whatsappBotMxid);
     await http.post(
       Uri.parse(
           '$matrixBaseUrl/_matrix/client/v3/rooms/$roomId/send/m.room.message'),
@@ -101,11 +81,11 @@ class WhatsAppService {
         "body": "!wa login phone",
       }),
     );
+    return roomId;
   }
 
-  Future<void> sendPhoneNumber(String phone) async {
+  Future<void> sendPhoneNumber(String phone, String roomId) async {
     final token = await _readToken();
-    final roomId = await _getOrCreateRoomWithBot();
     await http.post(
       Uri.parse(
           '$matrixBaseUrl/_matrix/client/v3/rooms/$roomId/send/m.room.message'),
@@ -120,9 +100,8 @@ class WhatsAppService {
     );
   }
 
-  Future<String?> getLastBotMessage() async {
+  Future<String?> getLastBotMessage(String roomId) async {
     final token = await _readToken();
-    final roomId = await _getOrCreateRoomWithBot();
 
     final resp = await http.get(
       Uri.parse('$matrixBaseUrl/_matrix/client/v3/rooms/$roomId/messages?dir=b&limit=10'),
@@ -147,6 +126,83 @@ class WhatsAppService {
     }
 
     return null;
+  }
+
+
+  Future<void> logoutFromWhatsApp() async {
+    final token = await _readToken();
+    final roomId = await _createRoomWithBot(whatsappBotMxid);
+
+    // 1. !wa list-logins komutu gönder
+    await http.post(
+      Uri.parse('$matrixBaseUrl/_matrix/client/v3/rooms/$roomId/send/m.room.message'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        "msgtype": "m.text",
+        "body": "!wa list-logins",
+      }),
+    );
+
+    // 2. Botun cevap vermesi için 1 saniye bekle
+    await Future.delayed(Duration(seconds: 1));
+
+    // 3. Son mesajları çek
+    final resp = await http.get(
+      Uri.parse('$matrixBaseUrl/_matrix/client/v3/rooms/$roomId/messages?dir=b&limit=10'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    final messages = jsonDecode(resp.body)['chunk'];
+    String? loginId;
+
+    for (var msg in messages) {
+      if (msg['sender'] != whatsappBotMxid || msg['type'] != 'm.room.message') continue;
+
+      final content = msg['content'];
+      final formatted = content['formatted_body'];
+      final body = content['body'];
+
+      final text = formatted ?? body ?? '';
+
+      // Hem plain hem HTML için <code>LOGINID</code> yakalama
+      final match = RegExp(r'<code>([\w\-]+)<\/code>').firstMatch(text);
+      if (match != null) {
+        loginId = match.group(1);
+        break;
+      }
+
+      // Yedek: düz metinden yakala (örneğin: Login ID: 123456)
+      final fallbackMatch = RegExp(r'Login ID:\s*(\d+)').firstMatch(text);
+      if (fallbackMatch != null) {
+        loginId = fallbackMatch.group(1);
+        break;
+      }
+    }
+
+    if (loginId == null) {
+      print("⚠️ Login ID bulunamadı.");
+      return;
+    }
+
+    // 4. logout komutunu gönder
+    final logoutCommand = "!wa logout $loginId";
+
+    await http.post(
+      Uri.parse('$matrixBaseUrl/_matrix/client/v3/rooms/$roomId/send/m.room.message'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        "msgtype": "m.text",
+        "body": logoutCommand,
+      }),
+    );
+
+    print("✅ Çıkış komutu gönderildi: $logoutCommand");
   }
 
 }

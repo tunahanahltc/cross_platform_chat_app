@@ -131,7 +131,6 @@ class TwitterService {
               RegExp(r'<code>\d{10,}<\/code>').hasMatch(text)) {
             final match = RegExp(r'<code>(\d{10,})<\/code>').firstMatch(text);
             loginId = match?.group(1);
-            showToast('Login ID bulundu: $loginId');
             break;
           }
         }

@@ -38,6 +38,8 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   flutter_inappwebview: ^6.1.5
   fluttertoast: ^8.2.4
+  ffmpeg_kit_flutter_new: ^1.6.1
+
 
   chatview: ^2.4.1
   just_audio: ^0.10.3

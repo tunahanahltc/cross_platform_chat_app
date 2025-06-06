@@ -143,6 +143,11 @@ class _LoginState extends State<Login> {
             await _storage.write(key: 'matrixUsername', value: userLocalpart);
             await _storage.write(key: 'matrixPassword', value: pass);
             await _storage.write(key: 'access_token', value: accessToken);
+            await _storage.write(key: 'telegramConnected', value: 'false');
+            await _storage.write(key: 'twitterConnected', value: 'false');
+            await _storage.write(key: 'instaConnected', value: 'false');
+            await _storage.write(key: 'whatsappConnected', value: 'false');
+            await _storage.write(key: 'blueskyConnected', value: 'false');
           } catch (e) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Matrix login failed: $e')),
