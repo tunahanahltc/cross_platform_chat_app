@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cross_platform_chat_app/constants/constants.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -8,7 +9,7 @@ class VideoSenderService {
     required String accessToken,
     required String roomId,
   }) async {
-    final uploadUrl = Uri.parse('http://10.0.2.2:8008/_matrix/media/r0/upload?access_token=$accessToken');
+    final uploadUrl = Uri.parse('$matrixBaseUrl/_matrix/media/r0/upload?access_token=$accessToken');
 
     // ✅ Dosyayı byte olarak oku
     final bytes = await videoFile.readAsBytes();
@@ -33,7 +34,7 @@ class VideoSenderService {
     }
 
     // Videoyu odaya mesaj olarak gönder
-    final sendUrl = Uri.parse('http://10.0.2.2:8008/_matrix/client/v3/rooms/$roomId/send/m.room.message?access_token=$accessToken');
+    final sendUrl = Uri.parse('$matrixBaseUrl/_matrix/client/v3/rooms/$roomId/send/m.room.message?access_token=$accessToken');
     final payload = {
       'msgtype': 'm.video',
       'body': videoFile.path.split('/').last, // dosya adı

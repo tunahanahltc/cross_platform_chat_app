@@ -56,7 +56,7 @@ class TelegramMatrixService {
       Uri.parse('$homeserverUrl/_matrix/client/v3/createRoom?access_token=$token'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'invite': ['@telegrambot:localhost'],
+        'invite': ['@telegrambot:$botHost'],
         'is_direct': true,
       }),
     );
@@ -112,7 +112,7 @@ class TelegramMatrixService {
         Uri.parse('$homeserverUrl/_matrix/client/v3/createRoom?access_token=$token'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'invite': ['@telegrambot:localhost'],
+          'invite': ['@telegrambot:$botHost'],
           'is_direct': true,
         }),
       );
@@ -149,7 +149,7 @@ class TelegramMatrixService {
 
     final messages = jsonDecode(resp.body)['chunk'];
     for (var msg in messages) {
-      if (msg['sender'] != '@telegrambot:localhost' || msg['type'] != 'm.room.message') continue;
+      if (msg['sender'] != '@telegrambot:$botHost' || msg['type'] != 'm.room.message') continue;
 
       final content = msg['content'];
       final formatted = content['formatted_body'];

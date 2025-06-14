@@ -20,6 +20,10 @@ import '../../services/voice_recorder.dart';
 import '../../services/audio_downloader.dart';
 import '../../services/image_sender.dart';
 import 'audio_message_builder.dart';
+import '../../services/video_sender.dart';
+import '../../models/video_message_widget.dart';
+import '../../services/video_downloader.dart';
+
 
 final String _matrixBaseUrl = matrixBaseUrl;
 
@@ -161,6 +165,96 @@ class _ChatPageState extends State<ChatPage> {
       imageFile: imageFile,
       accessToken: token,
       roomId: widget.chatId,
+    );
+  }
+
+  void _showVideoPicker() async {
+    final picker = ImagePicker();
+    final source = await showDialog<ImageSource>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Video Gönder'),
+        content: const Text('Videoyu nereden seçmek istiyorsun?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, ImageSource.camera),
+            child: const Text('Kamera'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, ImageSource.gallery),
+            child: const Text('Galeri'),
+          ),
+        ],
+      ),
+    );
+
+    if (source == null) return;
+    final picked = await picker.pickVideo(source: source);
+    if (picked != null) {
+      _handleSendVideoMessage(File(picked.path));
+    }
+  }
+
+  void _handleSendVideoMessage(File videoFile) async {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final localId = 'local_video_$timestamp';
+
+    setState(() {
+      _messages.add(
+        types.FileMessage(
+          author: _currentUser,
+          id: localId,
+          name: 'Video',
+          size: videoFile.lengthSync(),
+          uri: videoFile.path,
+          mimeType: 'video/mp4',
+          createdAt: timestamp,
+        ),
+      );
+      _messages.sort((a, b) => a.createdAt!.compareTo(b.createdAt!));
+    });
+
+    final token = await _readToken();
+
+    try {
+      await VideoSenderService.sendVideo(
+        videoFile: videoFile,
+        accessToken: token,
+        roomId: widget.chatId,
+      );
+    } catch (e) {
+      print("Video gönderimi sırasında hata oluştu: $e");
+    }
+  }
+  void _showMediaOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image),
+              title: const Text('Fotoğraf Gönder'),
+              onTap: () {
+                Navigator.pop(context);
+                _showImagePicker();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam),
+              title: const Text('Video Gönder'),
+              onTap: () {
+                Navigator.pop(context);
+                _showVideoPicker();
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -320,21 +414,69 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget _buildFileMessage(types.FileMessage msg) {
     final isAudio = msg.mimeType?.startsWith('audio/') ?? false;
-    if (!isAudio) return const SizedBox.shrink();
-    if (msg.uri.startsWith('/')) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: AudioMessageBubble(
-            localPath: msg.uri, isMe: msg.author.id == _selfId),
+    final isVideo = msg.mimeType?.startsWith('video/') ?? false;
+
+    // 🎧 Ses mesajı ise
+    if (isAudio) {
+      if (msg.uri.startsWith('/')) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: AudioMessageBubble(
+            localPath: msg.uri,
+            isMe: msg.author.id == _selfId,
+          ),
+        );
+      }
+
+      return AudioMessageWithDownloader(
+        uri: msg.uri,
+        msgId: msg.id,
+        name: msg.name,
+        isMe: msg.author.id == _selfId,
       );
     }
-    return AudioMessageWithDownloader(
-      uri: msg.uri,
-      msgId: msg.id,
-      name: msg.name,
-      isMe: msg.author.id == _selfId,
-    );
+
+    // 🎥 Video mesajı ise
+    if (isVideo) {
+      if (msg.uri.startsWith('/')) {
+        return VideoMessageWidget(
+          localPath: msg.uri,
+          isMe: msg.author.id == _selfId,
+        );
+      }
+
+      return FutureBuilder<String?>(
+        future: _storage.read(key: 'access_token').then((token) {
+          if (token == null) return null;
+          return VideoDownloader.downloadIfNeeded(
+            msg.uri,
+            msg.id,
+            msg.name ?? 'video.mp4',
+            token,
+          );
+        }),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.all(12),
+              child: CircularProgressIndicator(),
+            );
+          }
+          if (!snapshot.hasData || snapshot.data == null) {
+            return const SizedBox.shrink();
+          }
+          return VideoMessageWidget(
+            localPath: snapshot.data!,
+            isMe: msg.author.id == _selfId,
+          );
+        },
+      );
+    }
+
+    // 🎯 Ne ses ne video ise gösterme
+    return const SizedBox.shrink();
   }
+
   Widget _buildMessageWidget(types.Message message) {
     if (message is types.TextMessage) {
       return _buildTextBubble(message);
@@ -358,12 +500,6 @@ class _ChatPageState extends State<ChatPage> {
         foregroundColor: Colors.black,
         scrolledUnderElevation: 0.5,
         title: Text(widget.chatTitle),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.image),
-            onPressed: _showImagePicker,
-          ),
-        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -452,6 +588,9 @@ class _ChatPageState extends State<ChatPage> {
                               : Expanded(
                             child: TextField(
                               controller: _textController,
+                              onChanged: (val) {
+                                setState(() {}); // Buton ikonunu güncelle
+                              },
                               onSubmitted: (txt) {
                                 if (txt
                                     .trim()
@@ -478,51 +617,45 @@ class _ChatPageState extends State<ChatPage> {
                             ),
                           ),
                           const SizedBox(width: 8),
-
-                          // Ses gönderme butonu
-                          Listener(
-                            onPointerDown: (_) => _startRecording(),
-                            onPointerUp: (_) => _stopRecording(),
+                          IconButton(
+                            icon: const Icon(Icons.attach_file),
+                            onPressed: _showMediaOptions,
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () {
+                              final txt = _textController.text.trim();
+                              if (txt.isNotEmpty) {
+                                _handleSendPressed(types.PartialText(text: txt));
+                                _textController.clear();
+                                setState(() {}); // ikon güncelle
+                              }
+                            },
+                            onLongPressStart: (_) {
+                              final txt = _textController.text.trim();
+                              if (txt.isEmpty) {
+                                _startRecording();
+                              }
+                            },
+                            onLongPressEnd: (_) {
+                              final txt = _textController.text.trim();
+                              if (txt.isEmpty) {
+                                _stopRecording();
+                              }
+                            },
                             child: Container(
                               decoration: BoxDecoration(
-                                color: Colors.redAccent,
+                                color: _isRecording ? Colors.redAccent : Colors.amber, // 🔥
                                 borderRadius: BorderRadius.circular(50),
                               ),
                               padding: const EdgeInsets.all(12),
-                              child: const Icon(
-                                Icons.mic,
+                              child: Icon(
+                                _textController.text.trim().isNotEmpty ? Icons.send : Icons.mic,
                                 color: Colors.white,
                               ),
                             ),
                           ),
 
-                          const SizedBox(width: 8),
-
-                          // Görsel gönderme butonu
-                          IconButton(
-                            icon: const Icon(Icons.image),
-                            onPressed: _showImagePicker,
-                          ),
-
-                          const SizedBox(width: 8),
-
-                          // Metin gönderme butonu
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.amber,
-                              borderRadius: BorderRadius.circular(50),
-                            ),
-                            child: IconButton(
-                              icon: const Icon(Icons.send),
-                              onPressed: () {
-                                final txt = _textController.text.trim();
-                                if (txt.isEmpty) return;
-                                _handleSendPressed(
-                                  types.PartialText(text: txt),
-                                );
-                              },
-                            ),
-                          ),
                         ],
                       );
                     },

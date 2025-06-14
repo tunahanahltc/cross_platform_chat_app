@@ -16,7 +16,7 @@ class ChatListService {
   Future<void> startPolling(Function(List<Map<String, String>>) onUpdate) async {
     await _loadRooms(onUpdate);
     _poller = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(seconds:5),
           (_) => _loadRooms(onUpdate),
     );
   }
@@ -53,13 +53,19 @@ class ChatListService {
       final rooms = await Future.wait(ids.map((id) async {
         try {
           final name = await _fetchRoomName(id, selfId);
+
           final platform = await _getBridgeProtocol(id);
+          if ((platform == 'whatsapp' && !name.contains('(WA)')) ||
+              (platform == 'twitter' && !name.contains('(Twitter)'))) {
+            throw Exception('Grup sohbeti veya platform dışı oda');
+          }
           final lastMessageInfo = await _getLastMessageInfo(id);
           final unreadCount = await _getUnreadCount(id); // 🆕 Unread çekiyoruz
+
           return {
             'roomId': id,
-            'name': name,
-            'platform': platform,
+            'name': name.replaceAll(RegExp(r'\s*\(.*?\)'), ''),
+          'platform': platform,
             'lastMessage': lastMessageInfo['body'] ?? '',
             'lastMessageTimestamp': lastMessageInfo['timestamp'] ?? '',
             'unreadCount': unreadCount.toString(), // 🆕
