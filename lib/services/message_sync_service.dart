@@ -1,5 +1,3 @@
-
-
 // lib/services/message_sync_service.dart
 
 import 'dart:convert';
@@ -15,7 +13,6 @@ class MessageSyncService {
     required String accessToken,
     required String currentUserId,
   }) async {
-
     final roomIdEnc = Uri.encodeComponent(roomId);
     final url = '$matrixBaseUrl/_matrix/client/v3/rooms/$roomIdEnc/messages?access_token=$accessToken&dir=b&limit=30';
 
@@ -46,7 +43,8 @@ class MessageSyncService {
           text: content['body'] ?? '',
           createdAt: createdAt,
         );
-      } else if (msgType == 'm.audio' || msgType == 'm.file') {
+      }
+      else if (msgType == 'm.audio' || msgType == 'm.file') {
         final mxcUrl = content['url'];
         if (mxcUrl != null) {
           msg = types.FileMessage(
@@ -87,6 +85,35 @@ class MessageSyncService {
           }
         }
       }
+      else if (msgType == 'm.video') {
+        final mxcUrl = content['url'];
+        final filename = content['body'] ?? 'video.mp4';
+        final mimeType = content['info']?['mimetype'] ?? 'video/mp4';
+        final size = content['info']?['size'] ?? 0;
+
+        if (mxcUrl != null) {
+          // 🟢 Burada video dosyasını indireceğiz
+          final downloadedPath = await DownloadVideoHelper.downloadIfNeeded(
+            mxcUrl,
+            id,
+            filename,
+            accessToken,
+          );
+
+          if (downloadedPath != null) {
+            msg = types.FileMessage(
+              id: id,
+              author: author,
+              name: filename,
+              size: size,
+              uri: downloadedPath, // LOCAL path
+              mimeType: mimeType,
+              createdAt: createdAt,
+            );
+          }
+        }
+      }
+
       if (msg != null) {
         await LLocalStorage.saveSingleMessage(roomId, msg);
         if (sender != currentUserId) {
@@ -96,5 +123,31 @@ class MessageSyncService {
     }
 
     return newMessages;
+  }
+}
+
+// ⬆️ Video indirmek için ekstra servis
+class DownloadVideoHelper {
+  static Future<String?> downloadIfNeeded(
+      String mxcUri,
+      String messageId,
+      String fileName,
+      String accessToken,
+      ) async {
+    // mxc:// URL'sini normal URL'ye çevir
+    final url = mxcUri.replaceFirst('mxc://', '$matrixBaseUrl/_matrix/media/r0/download/');
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+
+    if (response.statusCode == 200) {
+      // 📂 Dosyayı local kaydet
+      return await LLocalStorage.saveFile(response.bodyBytes, messageId, fileName);
+    } else {
+      print('Video indirilemedi: ${response.statusCode}');
+      return null;
+    }
   }
 }

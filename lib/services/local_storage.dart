@@ -1,5 +1,3 @@
-// lib/services/local_storage.dart
-
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
@@ -61,7 +59,6 @@ class LLocalStorage {
         'author': msg.author.id,
       };
     }
-    
 
     return {}; // unsupported
   }
@@ -87,5 +84,24 @@ class LLocalStorage {
     }
     return null;
   }
-}
 
+  // 🌟🌟🌟🌟 YENİ EKLENENLER 🌟🌟🌟🌟
+
+  // Mesaj ID ve dosya adı ile local path oluştur
+  static Future<String> getDownloadedFilePath(String messageId, String fileName) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final downloadsDir = Directory('${dir.path}/downloads');
+    if (!await downloadsDir.exists()) {
+      await downloadsDir.create(recursive: true);
+    }
+    return '${downloadsDir.path}/$messageId\_$fileName';
+  }
+
+  // Bytes dizisini dosya olarak kaydet
+  static Future<String> saveFile(List<int> bytes, String messageId, String fileName) async {
+    final filePath = await getDownloadedFilePath(messageId, fileName);
+    final file = File(filePath);
+    await file.writeAsBytes(bytes);
+    return filePath;
+  }
+}

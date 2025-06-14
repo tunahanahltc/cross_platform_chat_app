@@ -40,6 +40,8 @@ dependencies:
   fluttertoast: ^8.2.4
   ffmpeg_kit_flutter_new: ^1.6.1
 
+  image_picker: ^1.0.4  # ✅ yeni
+  video_player: ^2.5.3  # ✅ yeni
 
   chatview: ^2.4.1
   just_audio: ^0.10.3
