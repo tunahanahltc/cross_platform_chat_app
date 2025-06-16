@@ -74,6 +74,46 @@ class _ChatPageState extends State<ChatPage> {
     if (token == null) throw Exception('No access token');
     return token;
   }
+  Future<void> _markChatAsRead() async {
+    try {
+      final token = await _readToken();
+      final encodedId = Uri.encodeComponent(widget.chatId);
+
+      final resp = await http.get(Uri.parse(
+        '$_matrixBaseUrl/_matrix/client/v3/rooms/$encodedId/messages?dir=b&limit=1&access_token=$token',
+      ));
+
+      if (resp.statusCode != 200) {
+        debugPrint('Son mesaj alınamadı');
+        return;
+      }
+
+      final data = jsonDecode(resp.body);
+      final chunk = (data['chunk'] as List).cast<Map<String, dynamic>>();
+      if (chunk.isEmpty) return;
+
+      final eventId = chunk.first['event_id'];
+      if (eventId == null) return;
+
+      final markResp = await http.post(
+        Uri.parse('$_matrixBaseUrl/_matrix/client/v3/rooms/$encodedId/read_markers?access_token=$token'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "m.read": eventId,
+          "m.fully_read": eventId,
+        }),
+      );
+
+      if (markResp.statusCode == 200) {
+        debugPrint("✅ Okundu olarak işaretlendi: $eventId");
+      } else {
+        debugPrint("❌ Mark işlemi başarısız: ${markResp.body}");
+      }
+    } catch (e) {
+      debugPrint("❌ Mark as read exception: $e");
+    }
+
+  }
 
   Future<void> _initializeChat() async {
     final token = await _readToken();
@@ -95,6 +135,7 @@ class _ChatPageState extends State<ChatPage> {
       _messages.sort((a, b) => a.createdAt!.compareTo(b.createdAt!));
       _loading = false; // Burada artık false olacak
     });
+    await _markChatAsRead();
 
     _poller = Timer.periodic(const Duration(seconds: 2), (_) async {
       final newMsgs = await MessageSyncService.pollAndSyncMessages(

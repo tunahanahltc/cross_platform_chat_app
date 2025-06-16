@@ -15,6 +15,7 @@ class ChatListPage extends StatefulWidget {
 }
 
 class _ChatListPageState extends State<ChatListPage> {
+  Function(List<Map<String, String>>)? _updateRooms;
   final ChatListService _chatService = ChatListService();
   List<Map<String, String>> _rooms = [];
   List<String> selectedPlatforms = [];
@@ -47,11 +48,16 @@ class _ChatListPageState extends State<ChatListPage> {
     await _chatService.startPolling((rooms) {
       if (!mounted) return;
       setState(() {
-        _rooms = rooms;
+        _rooms = rooms.map((room) => Map<String, String>.from(room)).toList();
         _loading = false;
       });
-      debugPrintTokenAndRoom(); // <-- SETSTATE DIŞINA ÇAĞIRACAĞIZ!
+      _updateRooms = (newRooms) {
+        setState(() {
+          _rooms = newRooms.map((room) => Map<String, String>.from(room)).toList();
+        });
+      };
     });
+
   }
 
   // debug kodu
@@ -114,7 +120,6 @@ class _ChatListPageState extends State<ChatListPage> {
       }
     });
   }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -149,7 +154,7 @@ class _ChatListPageState extends State<ChatListPage> {
           const Divider(),
           Expanded(
             child: ListView(
-              children: filteredRooms.map((room) => _buildRoomTile(room)).toList(),
+              children: filteredRooms.map(_buildRoomTile).toList(),
             ),
           ),
         ],
@@ -157,46 +162,9 @@ class _ChatListPageState extends State<ChatListPage> {
     );
   }
 
-  // Oda kartı
   Widget _buildRoomTile(Map<String, String> room) {
-    Widget leading;
-    switch (room['platform']) {
-      case 'telegram':
-        leading = const CircleAvatar(
-          backgroundImage: AssetImage('assets/telegram.png'),
-          backgroundColor: Colors.white,
-        );
-        break;
-      case 'twitter':
-        leading = const CircleAvatar(
-          backgroundImage: AssetImage('assets/twitter.png'),
-          backgroundColor: Colors.white,
-        );
-        break;
-      case 'bluesky':
-        leading = const CircleAvatar(
-          backgroundImage: AssetImage('assets/bluesky-icon.png'),
-          backgroundColor: Colors.white,
-        );
-        break;
-      case 'instagramgo':
-        leading = const CircleAvatar(
-          backgroundImage: AssetImage('assets/instagram.png'),
-          backgroundColor: Colors.white,
-        );
-        break;
-      case 'whatsapp':
-        leading = const CircleAvatar(
-          backgroundImage: AssetImage('assets/whatsapp.png'),
-          backgroundColor: Colors.white,
-        );
-        break;
-      case 'matrix':
-      default:
-        leading = const CircleAvatar(
-          child: Icon(Icons.message),
-        );
-    }
+    final unreadCount = int.tryParse(room['unreadCount'] ?? '0') ?? 0;
+    final time = formatTime(room['lastMessageTimestamp']);
 
     return Card(
       color: Colors.white,
@@ -204,90 +172,51 @@ class _ChatListPageState extends State<ChatListPage> {
       elevation: 1.8,
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: ListTile(
-          leading: leading,
-          title: Text(room['name'] ?? ''),
-          subtitle: Text(
-            room['lastMessage']?.isNotEmpty == true ? room['lastMessage']! : '',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          // 🆕 Burada saat + unread badge
-          trailing: FutureBuilder<int>(
-            future: _chatService.getUnreadCountManual(room['roomId']!),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return SizedBox();
-              final unreadCount = snapshot.data!;
-
-              if (unreadCount > 0) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      formatTime(room['lastMessageTimestamp']),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        unreadCount.toString(), // 🔥 Kaç tane unread varsa onu yazıyoruz!
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              } else {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      formatTime(room['lastMessageTimestamp']),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ],
-                );
-              }
-            },
-          ),
-          onTap: () async {
-            final timestamp = int.tryParse(room['lastMessageTimestamp'] ?? '0') ?? 0;
-            await _chatService.saveLastReadTimestamp(room['roomId']!, timestamp);
-
-            await Navigator.push( // <-- await ekledim
-              context,
-              MaterialPageRoute(
-                builder: (_) => ChatPage(
-                  chatId: room['roomId']!,
-                  chatTitle: room['name']!,
-                ),
+        leading: CircleAvatar(
+          backgroundImage: AssetImage(platformAssets[room['platform']] ?? ''),
+          backgroundColor: Colors.white,
+        ),
+        title: Text(room['name'] ?? ''),
+        subtitle: Text(
+          room['lastMessage'] ?? '',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(time, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            if (unreadCount > 0)
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                child: Text(unreadCount.toString(),
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
               ),
-            );
+          ],
+        ),
+        onTap: () async {
+          final lastEventId = room['lastEventId'] ?? '';
+          await _chatService.markAsRead(roomId: room['roomId']!, eventId: lastEventId);
 
-            setState(() {}); // <-- geri döndüğünde çalışacak
-          }
+          await Navigator.push(context, MaterialPageRoute(
+            builder: (_) => ChatPage(chatId: room['roomId']!, chatTitle: room['name']!),
+          ));
+
+          await _chatService.refreshNow((newRooms) {
+            if (!mounted) return;
+            setState(() {
+              _rooms = newRooms;
+            });
+          });
+        },
       ),
     );
   }
 }
 
-// PlatformButton Widget
-class PlatformButton extends StatefulWidget {
+class PlatformButton extends StatelessWidget {
   final String platform;
   final String assetPath;
   final bool isSelected;
@@ -304,62 +233,30 @@ class PlatformButton extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _PlatformButtonState createState() => _PlatformButtonState();
-}
-
-class _PlatformButtonState extends State<PlatformButton> {
-  double _scale = 1.0;
-
-  void _onTapDown(TapDownDetails details) {
-    setState(() {
-      _scale = 0.9;
-    });
-  }
-
-  void _onTapUp(TapUpDetails details) {
-    setState(() {
-      _scale = 1.0;
-    });
-  }
-
-  void _onTapCancel() {
-    setState(() {
-      _scale = 1.0;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: widget.onTap,
-      onTapDown: _onTapDown,
-      onTapUp: _onTapUp,
-      onTapCancel: _onTapCancel,
-      child: AnimatedScale(
-        scale: _scale,
-        duration: const Duration(milliseconds: 150),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: widget.isSelected ? Colors.blue : Colors.grey[300],
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(widget.assetPath, width: 24, height: 24),
-              const SizedBox(width: 8),
-              Text(
-                widget.platformName,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: widget.isSelected ? Colors.white : Colors.black,
-                  fontWeight: FontWeight.w500,
-                ),
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue : Colors.grey[300],
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(assetPath, width: 24, height: 24),
+            const SizedBox(width: 8),
+            Text(
+              platformName,
+              style: TextStyle(
+                fontSize: 14,
+                color: isSelected ? Colors.white : Colors.black,
+                fontWeight: FontWeight.w500,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

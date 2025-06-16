@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cross_platform_chat_app/pages/accounts/register.dart';
 import 'package:cross_platform_chat_app/pages/home/home_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
@@ -130,6 +131,7 @@ class _LoginState extends State<Login> {
           setState(() => _loading = true);
 
           try {
+            // 1. Matrix giriş
             await _matrixClient.checkHomeserver(Uri.parse(matrixBaseUrl));
             await _matrixClient.login(
               LoginType.mLoginPassword,
@@ -143,11 +145,6 @@ class _LoginState extends State<Login> {
             await _storage.write(key: 'matrixUsername', value: userLocalpart);
             await _storage.write(key: 'matrixPassword', value: pass);
             await _storage.write(key: 'access_token', value: accessToken);
-            await _storage.write(key: 'telegramConnected', value: 'false');
-            await _storage.write(key: 'twitterConnected', value: 'false');
-            await _storage.write(key: 'instaConnected', value: 'false');
-            await _storage.write(key: 'whatsappConnected', value: 'false');
-            await _storage.write(key: 'blueskyConnected', value: 'false');
           } catch (e) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Matrix login failed: $e')),
@@ -157,22 +154,43 @@ class _LoginState extends State<Login> {
           }
 
           try {
+            // 2. Firebase Auth
             await FirebaseAuth.instance.signInWithEmailAndPassword(
               email: email,
               password: pass,
             );
             final firebaseUser = FirebaseAuth.instance.currentUser;
-            final token = await _storage.read(key: 'access_token');
-            if (firebaseUser != null) {
+            final matrixToken = await _storage.read(key: 'access_token');
+            final matrixUsername = '@$userLocalpart:localhost';
+            final fcmToken = await FirebaseMessaging.instance.getToken();
+
+            if (firebaseUser != null && matrixToken != null && fcmToken != null) {
+              // 3. Firestore'a kayıt
               await FirebaseFirestore.instance
-                  .collection('matrix_telegram_users')
+                  .collection('users')
                   .doc(firebaseUser.uid)
                   .set({
-                'matrixUser': userLocalpart,
-                'token': token,
+                'username': matrixUsername,
+                'access_token': matrixToken,
+                'fcm_token': fcmToken,
+                'is_online': true,
+                'platform': 'android',
+                'last_login': FieldValue.serverTimestamp(),
               }, SetOptions(merge: true));
             }
 
+            // 4. FCM token yenilenirse güncelle
+            FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+              final user = FirebaseAuth.instance.currentUser;
+              if (user != null) {
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .update({'fcm_token': newToken});
+              }
+            });
+
+            // 5. Ana sayfaya geç
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => const HomePage()),
@@ -191,6 +209,7 @@ class _LoginState extends State<Login> {
             setState(() => _loading = false);
           }
         },
+
       ),
     );
   }

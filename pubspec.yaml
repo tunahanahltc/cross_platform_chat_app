@@ -45,6 +45,8 @@ dependencies:
 
   chatview: ^2.4.1
   just_audio: ^0.10.3
+  firebase_messaging: ^15.2.7
+  flutter_local_notifications: ^19.2.1
 
 dev_dependencies:
   flutter_test:

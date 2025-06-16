@@ -114,23 +114,22 @@ class ProfilePage extends StatelessWidget {
 
   Future<void> _logoutFromBoth(BuildContext context) async {
     final storage = const FlutterSecureStorage();
+    final user = FirebaseAuth.instance.currentUser;
 
     // 1) Synapse (Matrix) logout
     try {
       final accessToken = await storage.read(key: 'access_token');
       if (accessToken != null) {
-        final logoutUrl =
-        Uri.parse('$matrixBaseUrl/_matrix/client/v3/logout');
+        final logoutUrl = Uri.parse('$matrixBaseUrl/_matrix/client/v3/logout');
         final res = await http.post(
           logoutUrl,
           headers: {'Authorization': 'Bearer $accessToken'},
         );
-        // Zorunlu değil ama statusCode kontrol edebilirsin:
         if (res.statusCode != 200) {
           debugPrint('Matrix logout hata: ${res.statusCode} ${res.body}');
         }
       }
-      // Storage'daki Matrix bilgilerini sil
+
       await storage.delete(key: 'matrixUsername');
       await storage.delete(key: 'matrixPassword');
       await storage.delete(key: 'access_token');
@@ -138,16 +137,27 @@ class ProfilePage extends StatelessWidget {
       debugPrint('Matrix logout sırasında hata: $e');
     }
 
-    // 2) FirebaseAuth logout
+    // 2) Firestore'da is_online = false
+    try {
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'is_online': false,
+        });
+      }
+    } catch (e) {
+      debugPrint('Firestore güncelleme hatası: $e');
+    }
+
+    // 3) FirebaseAuth logout
     try {
       await FirebaseAuth.instance.signOut();
     } catch (e) {
       debugPrint('FirebaseAuth logout sırasında hata: $e');
     }
 
-
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const Login()),
-     );
+    );
   }
+
 }
