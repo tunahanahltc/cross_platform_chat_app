@@ -6,7 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cross_platform_chat_app/constants/constants.dart';
 import 'package:http/http.dart' as http;
 
-// Android emulator için localhost yerine 10.0.2.2 kullanın.
+import '../../main.dart';
+import '../../theme/app_colors.dart';
 
 class Register extends StatefulWidget {
   const Register({Key? key}) : super(key: key);
@@ -16,27 +17,52 @@ class Register extends StatefulWidget {
 }
 
 class _RegisterState extends State<Register> {
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController surnameController = TextEditingController();
-  bool _loading = false;
+  final emailController    = TextEditingController();
+  final passwordController = TextEditingController();
+  final nameController     = TextEditingController();
+  final surnameController  = TextEditingController();
+  bool _loading            = false;
 
   @override
   Widget build(BuildContext context) {
+    final brightness  = Theme.of(context).brightness;
+    final bgColor     = AppColors.primaryy(brightness);
+    final primary     = AppColors.primaryy(brightness);
+    final textColor   = AppColors.text(brightness);
+    final fieldBg     = AppColors.primaryy(brightness);
+    final fieldBorder = AppColors.text(brightness);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgColor,
       body: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(16),
         child: ListView(
-          children: <Widget>[
+          children: [
+            // Sağ üst tema toggle
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  icon: Icon(
+                    brightness == Brightness.dark
+                        ? Icons.wb_sunny_outlined
+                        : Icons.nights_stay_outlined,
+                    color: textColor,
+                  ),
+                  onPressed: () => MyApp.of(context).toggleTheme(),
+                ),
+              ],
+            ),
+
+            // Geri + Başlık
             Row(
               children: [
                 IconButton(
-                  icon: Icon(Icons.arrow_back),
+                  icon: Icon(Icons.arrow_back, color: textColor),
                   onPressed: () => Navigator.pop(context),
                 ),
-                const Text(
+                const SizedBox(width: 8),
+                Text(
                   'Chatty',
                   style: TextStyle(
                     color: Colors.orangeAccent,
@@ -47,29 +73,71 @@ class _RegisterState extends State<Register> {
               ],
             ),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'Sign up',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 20),
+              style: TextStyle(fontSize: 20, color: textColor),
             ),
             const SizedBox(height: 20),
-            _buildTextField(nameController, 'Name'),
+
+            // Ad
+            _buildTextField(
+              controller: nameController,
+              label: 'Name',
+              brightness: brightness,
+              fillColor: fieldBg,
+              borderColor: fieldBorder,
+            ),
             const SizedBox(height: 10),
-            _buildTextField(surnameController, 'Surname'),
+
+            // Soyad
+            _buildTextField(
+              controller: surnameController,
+              label: 'Surname',
+              brightness: brightness,
+              fillColor: fieldBg,
+              borderColor: fieldBorder,
+            ),
             const SizedBox(height: 10),
-            _buildTextField(emailController, 'E-mail', keyboardType: TextInputType.emailAddress),
+
+            // E-posta
+            _buildTextField(
+              controller: emailController,
+              label: 'E-mail',
+              brightness: brightness,
+              fillColor: fieldBg,
+              borderColor: fieldBorder,
+              keyboardType: TextInputType.emailAddress,
+            ),
             const SizedBox(height: 10),
-            _buildTextField(passwordController, 'Password', obscureText: true),
+
+            // Şifre
+            _buildTextField(
+              controller: passwordController,
+              label: 'Password',
+              obscureText: true,
+              brightness: brightness,
+              fillColor: fieldBg,
+              borderColor: fieldBorder,
+            ),
             const SizedBox(height: 20),
+
+            // Kayıt Butonu
             _loading
-                ? Center(child: CircularProgressIndicator())
+                ? Center(child: CircularProgressIndicator(color: primary))
                 : SizedBox(
               height: 50,
               child: ElevatedButton(
-                child: const Text('Register'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.secondary(brightness),
+                  foregroundColor: AppColors.text(brightness),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
                 onPressed: () async {
                   final email = emailController.text.trim();
-                  final pass = passwordController.text.trim();
+                  final pass  = passwordController.text.trim();
                   if (!EmailValidator.validate(email)) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Invalid email format')),
@@ -80,6 +148,7 @@ class _RegisterState extends State<Register> {
                   await _registerMatrixThenFirebase(email, pass);
                   setState(() => _loading = false);
                 },
+                child: const Text('Register'),
               ),
             ),
           ],
@@ -88,16 +157,38 @@ class _RegisterState extends State<Register> {
     );
   }
 
-  Widget _buildTextField(TextEditingController ctrl, String label, {bool obscureText = false, TextInputType keyboardType = TextInputType.text}) {
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    bool obscureText = false,
+    required Brightness brightness,
+    required Color fillColor,
+    required Color borderColor,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    final primary   = AppColors.primaryy(brightness);
+    final textColor = AppColors.text(brightness);
+
     return TextField(
-      controller: ctrl,
+      controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      cursorColor: primary,
+      style: TextStyle(color: textColor),
       decoration: InputDecoration(
-        border: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(15)),
-        ),
+        filled: true,
+        fillColor: fillColor,
         labelText: label,
+        labelStyle: TextStyle(color: textColor.withOpacity(0.7)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: borderColor, width: 1.5),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: primary, width: 2),
+        ),
       ),
     );
   }
@@ -153,5 +244,14 @@ class _RegisterState extends State<Register> {
         SnackBar(content: Text('Matrix registration failed: ${resp.body}')),
       );
     }
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    nameController.dispose();
+    surnameController.dispose();
+    super.dispose();
   }
 }

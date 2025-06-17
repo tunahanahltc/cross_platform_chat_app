@@ -10,6 +10,9 @@ import 'package:matrix/matrix.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:cross_platform_chat_app/constants/constants.dart';
 
+import '../../main.dart';
+import '../../theme/app_colors.dart';
+
 class Login extends StatefulWidget {
   const Login({Key? key}) : super(key: key);
 
@@ -18,10 +21,10 @@ class Login extends StatefulWidget {
 }
 
 class _LoginState extends State<Login> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
-  bool _loading = false;
+  final _emailController    = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _storage            = const FlutterSecureStorage();
+  bool _loading             = false;
   late Client _matrixClient;
 
   @override
@@ -40,7 +43,6 @@ class _LoginState extends State<Login> {
     if (res.statusCode != 200) throw Exception('Failed to get devices');
 
     final devices = jsonDecode(res.body)['devices'];
-
     // En son kullanılan cihaz (bu cihaz olmalı)
     String? currentDeviceId;
     int maxSeen = 0;
@@ -66,166 +68,120 @@ class _LoginState extends State<Login> {
 
   @override
   Widget build(BuildContext context) {
+    final brightness  = Theme.of(context).brightness;
+    final bgColor     = AppColors.primaryy(brightness);
+    final primary     = AppColors.primaryy(brightness);
+    final textColor   = AppColors.text(brightness);
+    final fieldBg     = AppColors.primaryy(brightness);
+    final fieldBorder = AppColors.text(brightness);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgColor,
       body: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(16),
         child: ListView(
-          children: <Widget>[
-            const SizedBox(height: 5),
-            _buildHeader(),
-            const SizedBox(height: 20),
-            _buildInputFields(),
-            const SizedBox(height: 20),
-            _buildButtons(context),
-            const SizedBox(height: 20),
-            _buildFooter(context),
+          children: [
+            // Sağ üst tema düğmesi
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  icon: Icon(
+                    brightness == Brightness.dark
+                        ? Icons.wb_sunny_outlined
+                        : Icons.nights_stay_outlined,
+                    color: textColor,
+                  ),
+                  onPressed: () => MyApp.of(context).toggleTheme(),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 40),
+            _buildHeader(textColor),
+            const SizedBox(height: 40),
+            // Input Fields
+            _buildTextField(
+              controller: _emailController,
+              label: 'User Name or E-mail',
+              brightness: brightness,
+              fillColor: fieldBg,
+              borderColor: fieldBorder,
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: _passwordController,
+              label: 'Password',
+              obscureText: true,
+              brightness: brightness,
+              fillColor: fieldBg,
+              borderColor: fieldBorder,
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {},
+                style: TextButton.styleFrom(foregroundColor: primary),
+                child:  Text('Forgot Password?', style: TextStyle(color: AppColors.text(brightness)),),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Login Button
+            _loading
+                ? Center(child: CircularProgressIndicator(color: primary))
+                : SizedBox(
+              height: 48,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.secondary(brightness),
+                  foregroundColor: AppColors.text(brightness),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _onLoginPressed,
+                child: const Text('Login'),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Footer
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Doesn’t have an account?',
+                  style: TextStyle(color: textColor),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const Register()),
+                  ),
+                  style: TextButton.styleFrom(foregroundColor: AppColors.text(brightness)),
+                  child: const Text(' Sign up'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Column(
-      children: const [
-        Text('Chatty',
-            style: TextStyle(
-                color: Colors.orangeAccent,
-                fontSize: 40,
-                fontFamily: 'MyTitleFont')),
-        Text('Sign in', style: TextStyle(fontSize: 20)),
-      ],
-    );
-  }
-
-  Widget _buildInputFields() {
+  Widget _buildHeader(Color textColor) {
     return Column(
       children: [
-        _buildTextField(controller: _emailController, label: 'User Name or E-mail'),
-        const SizedBox(height: 10),
-        _buildTextField(
-            controller: _passwordController, label: 'Password', obscureText: true),
-        const SizedBox(height: 10),
-        TextButton(onPressed: () {}, child: const Text('Forgot Password')),
-      ],
-    );
-  }
-
-  Widget _buildButtons(BuildContext context) {
-    return _loading
-        ? const Center(child: CircularProgressIndicator())
-        : SizedBox(
-      height: 50,
-      child: ElevatedButton(
-        child: const Text('Login'),
-        onPressed: () async {
-          final email = _emailController.text.trim();
-          final userLocalpart = email
-              .split('@')
-              .first
-              .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-          final pass = _passwordController.text.trim();
-          if (email.isEmpty || pass.isEmpty) return;
-
-          setState(() => _loading = true);
-
-          try {
-            // 1. Matrix giriş
-            await _matrixClient.checkHomeserver(Uri.parse(matrixBaseUrl));
-            await _matrixClient.login(
-              LoginType.mLoginPassword,
-              password: pass,
-              identifier: AuthenticationUserIdentifier(user: userLocalpart),
-            );
-
-            final accessToken = _matrixClient.accessToken!;
-            await logoutAllOtherDevicesExceptCurrent(accessToken, matrixBaseUrl);
-
-            await _storage.write(key: 'matrixUsername', value: userLocalpart);
-            await _storage.write(key: 'matrixPassword', value: pass);
-            await _storage.write(key: 'access_token', value: accessToken);
-          } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Matrix login failed: $e')),
-            );
-            setState(() => _loading = false);
-            return;
-          }
-
-          try {
-            // 2. Firebase Auth
-            await FirebaseAuth.instance.signInWithEmailAndPassword(
-              email: email,
-              password: pass,
-            );
-            final firebaseUser = FirebaseAuth.instance.currentUser;
-            final matrixToken = await _storage.read(key: 'access_token');
-            final matrixUsername = '@$userLocalpart:localhost';
-            final fcmToken = await FirebaseMessaging.instance.getToken();
-
-            if (firebaseUser != null && matrixToken != null && fcmToken != null) {
-              // 3. Firestore'a kayıt
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(firebaseUser.uid)
-                  .set({
-                'username': matrixUsername,
-                'access_token': matrixToken,
-                'fcm_token': fcmToken,
-                'is_online': true,
-                'platform': 'android',
-                'last_login': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-            }
-
-            // 4. FCM token yenilenirse güncelle
-            FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-              final user = FirebaseAuth.instance.currentUser;
-              if (user != null) {
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(user.uid)
-                    .update({'fcm_token': newToken});
-              }
-            });
-
-            // 5. Ana sayfaya geç
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const HomePage()),
-            );
-          } on FirebaseAuthException catch (e) {
-            String message = 'Bir hata oluştu';
-            if (e.code == 'user-not-found') {
-              message = 'Kullanıcı bulunamadı.';
-            } else if (e.code == 'wrong-password') {
-              message = 'Şifre yanlış.';
-            }
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(message)),
-            );
-          } finally {
-            setState(() => _loading = false);
-          }
-        },
-
-      ),
-    );
-  }
-
-  Widget _buildFooter(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Text('Does not have account?'),
-        TextButton(
-          child: const Text('Sign up', style: TextStyle(fontSize: 20)),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const Register()),
+        Text(
+          'Chatty',
+          style: TextStyle(
+            color: Colors.orangeAccent,
+            fontSize: 40,
+            fontFamily: 'MyTitleFont',
           ),
         ),
+        const SizedBox(height: 8),
+        Text('Sign in', style: TextStyle(fontSize: 20, color: textColor)),
       ],
     );
   }
@@ -234,18 +190,127 @@ class _LoginState extends State<Login> {
     required TextEditingController controller,
     required String label,
     bool obscureText = false,
-  }) =>
-      TextField(
-        controller: controller,
-        obscureText: obscureText,
-        decoration: InputDecoration(
-          border: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(15)),
-          ),
-          labelText: label,
+    required Brightness brightness,
+    required Color fillColor,
+    required Color borderColor,
+  }) {
+    final primary   = AppColors.secondary(brightness);
+    final textColor = AppColors.text(brightness);
+
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      cursorColor: primary,
+      style: TextStyle(color: textColor),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: fillColor,
+        labelText: label,
+        labelStyle: TextStyle(color: textColor.withOpacity(0.7)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: AppColors.text(brightness), width: 1.5),
         ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: AppColors.text(brightness), width: 2),
+        ),
+      ),
+    );
+  }
+
+
+  Future<void> _onLoginPressed() async {
+    final email = _emailController.text.trim();
+    final userLocalpart = email
+        .split('@')
+        .first
+        .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
+    final pass = _passwordController.text.trim();
+    if (email.isEmpty || pass.isEmpty) return;
+
+    setState(() => _loading = true);
+
+    // 1) Matrix login
+    try {
+      await _matrixClient.checkHomeserver(Uri.parse(matrixBaseUrl));
+      await _matrixClient.login(
+        LoginType.mLoginPassword,
+        password: pass,
+        identifier: AuthenticationUserIdentifier(user: userLocalpart),
       );
 
+      final accessToken = _matrixClient.accessToken!;
+      await logoutAllOtherDevicesExceptCurrent(accessToken, matrixBaseUrl);
+
+      await _storage.write(key: 'matrixUsername', value: userLocalpart);
+      await _storage.write(key: 'matrixPassword', value: pass);
+      await _storage.write(key: 'access_token', value: accessToken);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Matrix login failed: $e')),
+      );
+      setState(() => _loading = false);
+      return;
+    }
+
+    // 2) Firebase Auth
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: pass,
+      );
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      final matrixToken = await _storage.read(key: 'access_token');
+      final matrixUsername = '@$userLocalpart:localhost';
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+
+      if (firebaseUser != null && matrixToken != null && fcmToken != null) {
+        // 3) Firestore update
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(firebaseUser.uid)
+            .set({
+          'username': matrixUsername,
+          'access_token': matrixToken,
+          'fcm_token': fcmToken,
+          'is_online': true,
+          'platform': 'android',
+          'last_login': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      // 4) FCM token refresh listener
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({'fcm_token': newToken});
+        }
+      });
+
+      // 5) Navigate to Home
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomePage()),
+      );
+    } on FirebaseAuthException catch (e) {
+      String message = 'Bir hata oluştu';
+      if (e.code == 'user-not-found') {
+        message = 'Kullanıcı bulunamadı.';
+      } else if (e.code == 'wrong-password') {
+        message = 'Şifre yanlış.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
   @override
   void dispose() {
     _emailController.dispose();

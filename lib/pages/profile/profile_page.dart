@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:cross_platform_chat_app/constants/constants.dart';
 
+import '../../theme/app_colors.dart';
 import '../accounts/login.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -28,11 +29,11 @@ class ProfilePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     final photoUrl = user?.photoURL;
-
+    final brightness = Theme.of(context).brightness;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.primaryy(brightness),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.primaryy(brightness),
         title: const Text("Profil"),
         actions: [
           IconButton(
@@ -68,10 +69,8 @@ class ProfilePage extends StatelessWidget {
                 Center(
                   child: CircleAvatar(
                     radius: 50,
-                    backgroundImage: photoUrl != null
-                        ? NetworkImage(photoUrl)
-                        : const AssetImage('assets/default_avatar.png')
-                    as ImageProvider,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: const AssetImage('assets/default_avatar.png')
                   ),
                 ),
                 const SizedBox(height: 20),

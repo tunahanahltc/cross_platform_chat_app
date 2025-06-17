@@ -15,6 +15,8 @@ import '../../services/matrix_telegram_service.dart';
 import '../../services/matrix_whatsapp_service.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../theme/app_colors.dart';
+
 class AccountsPage extends StatefulWidget {
   const AccountsPage({Key? key}) : super(key: key);
 
@@ -63,8 +65,9 @@ class _AccountsPageState extends State<AccountsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor:  AppColors.primaryy(brightness),
       body: Center(
         child: Column(
           //mainAxisAlignment: MainAxisAlignment.center,
@@ -91,7 +94,7 @@ class _AccountsPageState extends State<AccountsPage> {
                       width: 100,
                       child: Text(
                         "Telegram",
-                        style: TextStyle(color: Colors.black,fontWeight: FontWeight.bold,fontSize: 20),
+                        style: TextStyle(color:  AppColors.text(brightness),fontWeight: FontWeight.bold,fontSize: 20),
                       )
                   ),
                   SizedBox(width: 20),
@@ -127,7 +130,7 @@ class _AccountsPageState extends State<AccountsPage> {
                       width: 100,
                       child: Text(
                         "Twitter",
-                        style: TextStyle(color: Colors.black,fontWeight: FontWeight.bold,fontSize: 20),
+                        style: TextStyle(color: AppColors.text(brightness),fontWeight: FontWeight.bold,fontSize: 20),
                       )
                   ),
                   SizedBox(width: 20,),
@@ -164,7 +167,7 @@ class _AccountsPageState extends State<AccountsPage> {
                     width: 100,
                       child: Text(
                         "Instagram",
-                        style: TextStyle(color: Colors.black,fontWeight: FontWeight.bold,fontSize: 20),
+                        style: TextStyle(color: AppColors.text(brightness),fontWeight: FontWeight.bold,fontSize: 20),
                       )
                   ),
                   SizedBox(width: 20,),
@@ -200,7 +203,7 @@ class _AccountsPageState extends State<AccountsPage> {
                       width: 100,
                       child: Text(
                         "Whatsapp",
-                        style: TextStyle(color: Colors.black,fontWeight: FontWeight.bold,fontSize: 20),
+                        style: TextStyle(color: AppColors.text(brightness),fontWeight: FontWeight.bold,fontSize: 20),
                       )
                   ),
               SizedBox(width: 20,),
@@ -235,7 +238,7 @@ class _AccountsPageState extends State<AccountsPage> {
                         width: 100,
                         child: Text(
                           "Bluesky",
-                          style: TextStyle(color: Colors.black,fontWeight: FontWeight.bold,fontSize: 20),
+                          style: TextStyle(color: AppColors.text(brightness),fontWeight: FontWeight.bold,fontSize: 20),
                         )
                     ),
                     SizedBox(width: 20,),

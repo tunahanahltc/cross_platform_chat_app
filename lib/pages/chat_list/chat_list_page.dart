@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // 🌟 Saat formatlamak için gerekli
 import '../../services/chat_list_service.dart';
+import '../../theme/app_colors.dart';
 import 'chat_page.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-// debug icin
 
 class ChatListPage extends StatefulWidget {
   final String searchQuery;
@@ -15,11 +15,10 @@ class ChatListPage extends StatefulWidget {
 }
 
 class _ChatListPageState extends State<ChatListPage> {
-  Function(List<Map<String, String>>)? _updateRooms;
   final ChatListService _chatService = ChatListService();
   List<Map<String, String>> _rooms = [];
   List<String> selectedPlatforms = [];
-  List<String> allUnselectedPlatforms = ['telegram','twitter','instagramgo','whatsapp','bluesky'];
+  final List<String> allPlatforms = ['telegram','twitter','instagramgo','whatsapp','bluesky'];
   bool _loading = true;
 
   final Map<String, String> platformAssets = {
@@ -51,24 +50,7 @@ class _ChatListPageState extends State<ChatListPage> {
         _rooms = rooms.map((room) => Map<String, String>.from(room)).toList();
         _loading = false;
       });
-      _updateRooms = (newRooms) {
-        setState(() {
-          _rooms = newRooms.map((room) => Map<String, String>.from(room)).toList();
-        });
-      };
     });
-
-  }
-
-  // debug kodu
-  Future<void> debugPrintTokenAndRoom() async {
-    final storage = FlutterSecureStorage();
-    final token = await storage.read(key: 'access_token');
-    print('DEBUG - ACCESS TOKEN: $token');
-
-    if (_rooms.isNotEmpty) {
-      print('DEBUG - ROOM ID: ${_rooms.first['roomId']}');
-    }
   }
 
   @override
@@ -77,19 +59,17 @@ class _ChatListPageState extends State<ChatListPage> {
     super.dispose();
   }
 
-  // 🆕 Timestamp formatlama
   String formatTime(String? timestamp) {
     if (timestamp == null || timestamp.isEmpty) return '';
     try {
       final milliseconds = int.parse(timestamp);
       final dateTime = DateTime.fromMillisecondsSinceEpoch(milliseconds).toLocal();
-      return DateFormat('HH:mm').format(dateTime); // 🌟 Saat:Dakika formatı
+      return DateFormat('HH:mm').format(dateTime);
     } catch (e) {
       return '';
     }
   }
 
-  // Filtrelenmiş sohbetler
   List<Map<String, String>> get filteredRooms {
     var tempRooms = _rooms;
 
@@ -104,10 +84,11 @@ class _ChatListPageState extends State<ChatListPage> {
         return name.contains(query);
       }).toList();
     }
-    if(selectedPlatforms.isEmpty){
-      tempRooms = tempRooms.where((room) => allUnselectedPlatforms.contains(room['platform'])).toList();
 
+    if (selectedPlatforms.isEmpty) {
+      tempRooms = tempRooms.where((room) => allPlatforms.contains(room['platform'])).toList();
     }
+
     return tempRooms;
   }
 
@@ -120,18 +101,15 @@ class _ChatListPageState extends State<ChatListPage> {
       }
     });
   }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.amber,)));
     }
-
-    if (_rooms.isEmpty) {
-      return const Scaffold(body: Center(child: Text('Henüz hiçbir sohbet yok.')));
-    }
-
+    final brightness = Theme.of(context).brightness;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.primaryy(brightness),
       body: Column(
         children: [
           const SizedBox(height: 12),
@@ -153,7 +131,9 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
           const Divider(),
           Expanded(
-            child: ListView(
+            child: _rooms.isEmpty
+                ? const Center(child: Text('Henüz hiçbir sohbet yok.'))
+                : ListView(
               children: filteredRooms.map(_buildRoomTile).toList(),
             ),
           ),
@@ -163,20 +143,24 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   Widget _buildRoomTile(Map<String, String> room) {
+    final roomId = room['roomId']!;
     final unreadCount = int.tryParse(room['unreadCount'] ?? '0') ?? 0;
     final time = formatTime(room['lastMessageTimestamp']);
+    final name = room['name'] ?? '';
+    final platform = room['platform']!;
+    final brightness = Theme.of(context).brightness;
 
     return Card(
-      color: Colors.white,
-      shadowColor: Colors.grey.shade200,
+      color: AppColors.primaryy(brightness),
+      shadowColor: Colors.black.withOpacity(0.6),
       elevation: 1.8,
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundImage: AssetImage(platformAssets[room['platform']] ?? ''),
-          backgroundColor: Colors.white,
+          backgroundImage: AssetImage(platformAssets[platform] ?? ''),
+          backgroundColor: AppColors.primaryy(brightness),
         ),
-        title: Text(room['name'] ?? ''),
+        title: Text(name),
         subtitle: Text(
           room['lastMessage'] ?? '',
           maxLines: 1,
@@ -185,24 +169,29 @@ class _ChatListPageState extends State<ChatListPage> {
         trailing: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(time, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            Text(time, style: TextStyle(fontSize: 12, color: AppColors.text(brightness))),
             if (unreadCount > 0)
               Container(
                 margin: const EdgeInsets.only(top: 4),
                 padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                child: Text(unreadCount.toString(),
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                decoration: const BoxDecoration(color: Colors.amber, shape: BoxShape.circle),
+                child: Text(
+                  unreadCount.toString(),
+                  style: TextStyle(color: AppColors.primaryy(brightness), fontSize: 12, fontWeight: FontWeight.bold),
+                ),
               ),
           ],
         ),
         onTap: () async {
-          final lastEventId = room['lastEventId'] ?? '';
-          await _chatService.markAsRead(roomId: room['roomId']!, eventId: lastEventId);
+          final lastEventId = room['lastEventId']!;
+          await _chatService.markAsRead(roomId: roomId, eventId: lastEventId);
 
-          await Navigator.push(context, MaterialPageRoute(
-            builder: (_) => ChatPage(chatId: room['roomId']!, chatTitle: room['name']!),
-          ));
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatPage(chatId: roomId, chatTitle: name, platform: platform),
+            ),
+          );
 
           await _chatService.refreshNow((newRooms) {
             if (!mounted) return;
@@ -211,6 +200,39 @@ class _ChatListPageState extends State<ChatListPage> {
             });
           });
         },
+        onLongPress: () => showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Sohbeti Sil'),
+            content: const Text('Bu sohbeti sunucudan ve uygulamadan silmek istediğinize emin misiniz?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Vazgeç', style:TextStyle(color: AppColors.text(brightness))),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  try {
+                    await _chatService.removeRoom(roomId);
+                    await _chatService.refreshNow((newRooms) {
+                      if (!mounted) return;
+                      setState(() => _rooms = newRooms);
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Sohbet silindi.')),
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Silme işlemi başarısız: $e')),
+                    );
+                  }
+                },
+                child: const Text('Sil', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -234,13 +256,14 @@ class PlatformButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 6),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue : Colors.grey[300],
+          color: isSelected ? Colors.blue : AppColors.secondary(brightness),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
@@ -252,7 +275,7 @@ class PlatformButton extends StatelessWidget {
               platformName,
               style: TextStyle(
                 fontSize: 14,
-                color: isSelected ? Colors.white : Colors.black,
+                color: isSelected ? Colors.white : AppColors.text(brightness),
                 fontWeight: FontWeight.w500,
               ),
             ),

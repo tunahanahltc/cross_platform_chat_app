@@ -67,6 +67,11 @@ flutter:
     - assets/twitter.png
     - assets/telegram.png
     - assets/backgroundImage.png
+    - assets/backgrounddark.png
+    - assets/backgroundlight.png
+    - assets/default_avatar.png
+
+
 
 
   fonts:

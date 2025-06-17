@@ -19,6 +19,7 @@ import '../../services/audio_sender.dart';
 import '../../services/voice_recorder.dart';
 import '../../services/audio_downloader.dart';
 import '../../services/image_sender.dart';
+import '../../theme/app_colors.dart';
 import 'audio_message_builder.dart';
 import '../../services/video_sender.dart';
 import '../../models/video_message_widget.dart';
@@ -30,8 +31,9 @@ final String _matrixBaseUrl = matrixBaseUrl;
 class ChatPage extends StatefulWidget {
   final String chatId;
   final String chatTitle;
+  final String platform;
 
-  const ChatPage({Key? key, required this.chatId, required this.chatTitle})
+  const ChatPage({Key? key, required this.chatId, required this.chatTitle, required this.platform})
       : super(key: key);
 
   @override
@@ -376,44 +378,30 @@ class _ChatPageState extends State<ChatPage> {
       _handleSendAudioMessage(path);
     }
   }
+  String _formatTimestamp(int? ts) {
+    if (ts == null) return '';
+    return DateFormat('HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(ts).toLocal());
+  }
 
   Widget _buildImageMessage(types.FileMessage msg) {
-    // Eğer uri yerel bir dosya yoluysa (başında “/” var), direkt göster:
-    if (msg.uri.startsWith('/')) {
-      return ImageMessageWidget(
-        localPath: msg.uri,
-        isMe: msg.author.id == _selfId,
-      );
-    }
-
-    // Aksi halde, mxc://… şeklindeki uzaktaki resmi indir ve öyle göster:
-    return FutureBuilder<String?>(
-      future: _storage.read(key: 'access_token').then((token) {
-        if (token == null) return null;
-        return ImageDownloader.downloadIfNeeded(
-          msg.uri,               // muhtemelen "mxc://..." şeklinde
-          msg.id,
-          msg.name ?? 'image.jpg',
-          token,
-        );
-      }),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(12),
-            child: CircularProgressIndicator(),
-          );
-        }
-        if (!snapshot.hasData || snapshot.data == null) {
-          return const SizedBox.shrink();
-        }
-        return ImageMessageWidget(
-          localPath: snapshot.data!,
-          isMe: msg.author.id == _selfId,
-        );
-      },
+    final timeString = _formatTimestamp(msg.createdAt);
+    // … mevcut FutureBuilder ve ImageMessageWidget render kodu …
+    return Column(
+      crossAxisAlignment:
+      msg.author.id == _selfId ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        // … burada ImageMessageWidget geliyor …
+        ImageMessageWidget(localPath: msg.uri, isMe: msg.author.id == _selfId),
+        const SizedBox(height: 4),
+        Text(
+          timeString,
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+      ],
     );
   }
+
 
 
   Widget _buildTextBubble(types.TextMessage msg) {
@@ -453,68 +441,104 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+
   Widget _buildFileMessage(types.FileMessage msg) {
     final isAudio = msg.mimeType?.startsWith('audio/') ?? false;
     final isVideo = msg.mimeType?.startsWith('video/') ?? false;
 
-    // 🎧 Ses mesajı ise
+    // Ses bölümü
     if (isAudio) {
-      if (msg.uri.startsWith('/')) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: AudioMessageBubble(
-            localPath: msg.uri,
-            isMe: msg.author.id == _selfId,
+      final timeString = _formatTimestamp(msg.createdAt);
+      return Column(
+        crossAxisAlignment: msg.author.id == _selfId
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          // … mevcut AudioMessageBubble veya downloader widget’ı …
+          AudioMessageBubble(localPath: msg.uri, isMe: msg.author.id == _selfId,),
+          const SizedBox(height: 4),
+          Text(
+            timeString,
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
-        );
-      }
-
-      return AudioMessageWithDownloader(
-        uri: msg.uri,
-        msgId: msg.id,
-        name: msg.name,
-        isMe: msg.author.id == _selfId,
+        ],
       );
     }
 
-    // 🎥 Video mesajı ise
+
+    // Video mesajı
     if (isVideo) {
+      // 1) createdAt’dan DateTime’a çevir, eksikse 0 kullan
+      final timestamp = msg.createdAt ?? 0;
+      final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+      final timeString = DateFormat('HH:mm').format(date);
+
+      // 2) Cihazdaki dosya
       if (msg.uri.startsWith('/')) {
-        return VideoMessageWidget(
-          localPath: msg.uri,
-          isMe: msg.author.id == _selfId,
+        return Column(
+          crossAxisAlignment: msg.author.id == _selfId
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: VideoMessageWidget(
+                localPath: msg.uri,
+                isMe: msg.author.id == _selfId,
+                time: timeString,
+              ),
+            ),
+            const SizedBox(height: 4),
+            // Text(
+            //   timeString,
+            //   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            // ),
+          ],
         );
       }
 
-      return FutureBuilder<String?>(
-        future: _storage.read(key: 'access_token').then((token) {
-          if (token == null) return null;
-          return VideoDownloader.downloadIfNeeded(
-            msg.uri,
-            msg.id,
-            msg.name ?? 'video.mp4',
-            token,
-          );
-        }),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Padding(
-              padding: EdgeInsets.all(12),
-              child: CircularProgressIndicator(),
+      else {
+        return FutureBuilder<String?>(
+          future: _storage.read(key: 'access_token').then((token) {
+            if (token == null) return null;
+            return DownloadVideoHelper.downloadIfNeeded(
+              msg.uri,
+              msg.id,
+              msg.name ?? 'video.mp4',
+              token,
             );
-          }
-          if (!snapshot.hasData || snapshot.data == null) {
-            return const SizedBox.shrink();
-          }
-          return VideoMessageWidget(
-            localPath: snapshot.data!,
-            isMe: msg.author.id == _selfId,
-          );
-        },
-      );
+          }),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.all(12),
+                child: CircularProgressIndicator(),
+              );
+            }
+            if (!snapshot.hasData || snapshot.data == null) {
+              return const SizedBox.shrink();
+            }
+            return Column(
+              crossAxisAlignment: msg.author.id == _selfId
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                VideoMessageWidget(
+                  localPath: snapshot.data!,
+                  isMe: msg.author.id == _selfId,
+                  time: timeString,
+                ),
+                const SizedBox(height: 4),
+                // Text(
+                //   timeString,
+                //   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                // ),
+              ],
+            );
+          },
+        );
+      }
     }
-
-    // 🎯 Ne ses ne video ise gösterme
     return const SizedBox.shrink();
   }
 
@@ -532,15 +556,33 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    // Parlaklığa göre background asset’ini seç
+    final bgAsset = brightness == Brightness.dark
+        ? 'assets/backgrounddark.png'
+        : 'assets/backgroundlight.png';
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         shadowColor: Colors.black,
         elevation: 0.5,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: AppColors.primaryy(brightness),
+        foregroundColor: AppColors.text(brightness),
         scrolledUnderElevation: 0.5,
-        title: Text(widget.chatTitle),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildPlatformIcon(widget.platform),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                widget.chatTitle,
+                overflow: TextOverflow.ellipsis,
+                style:  TextStyle(color: AppColors.text(brightness)),
+              ),
+            ),
+          ],
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -549,13 +591,13 @@ class _ChatPageState extends State<ChatPage> {
           // Arka plan (isteğe bağlı)
           Positioned.fill(
             child: Image.asset(
-              'assets/backgroundImage.png',
+              bgAsset,
               fit: BoxFit.cover,
+
             ),
           ),
           Column(
             children: [
-              // 🟢 Burada ListView.builder yer alıyor
               Expanded(
                 child: ListView.builder(
                   key: const PageStorageKey<String>('chat_list'),
@@ -565,9 +607,8 @@ class _ChatPageState extends State<ChatPage> {
                   itemCount: _messages.length,
                   itemBuilder: (context, index) {
                     final message = _messages[_messages.length - 1 - index];
-
                     return KeyedSubtree(
-                      key: ValueKey(message.id), // 💥 Önemli! Her mesajı benzersiz yapar
+                      key: ValueKey(message.id),
                       child: _buildMessageWidget(message),
                     );
                   },
@@ -575,7 +616,6 @@ class _ChatPageState extends State<ChatPage> {
               ),
 
 
-              // 🟢 Mesaj yazma alanı, ses/görsel gönderme butonları buraya gelecek
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 8.0,
@@ -641,9 +681,9 @@ class _ChatPageState extends State<ChatPage> {
                                 );
                               },
                               textInputAction: TextInputAction.send,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 filled: true,
-                                fillColor: Colors.white,
+                                fillColor: AppColors.primaryy(brightness),
                                 hintText: 'Mesaj yazın...',
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.all(
@@ -660,6 +700,7 @@ class _ChatPageState extends State<ChatPage> {
                           const SizedBox(width: 8),
                           IconButton(
                             icon: const Icon(Icons.attach_file),
+                            color: AppColors.text(brightness),
                             onPressed: _showMediaOptions,
                           ),
                           const SizedBox(width: 8),
@@ -710,6 +751,37 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 }
+
+Widget _buildPlatformIcon(String platform) {
+  String assetName;
+  switch (platform.toLowerCase()) {
+    case 'whatsapp':
+      assetName = 'assets/whatsapp.png';
+      break;
+    case 'bluesky':
+      assetName = 'assets/bluesky-icon.png';
+      break;
+    case 'telegram':
+      assetName = 'assets/telegram.png';
+      break;
+    case 'twitter':
+      assetName = 'assets/twitter.png';
+      break;
+    case 'instagramgo':
+      assetName = 'assets/instagram.png';
+      break;
+    default:
+      return const SizedBox.shrink();
+  }
+
+  return Image.asset(
+    assetName,
+    width: 20,
+    height: 20,
+    fit: BoxFit.contain,
+  );
+}
+
 
 class AudioMessageWithDownloader extends StatefulWidget {
   final String uri;

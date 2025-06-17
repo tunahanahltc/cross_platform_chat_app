@@ -2,6 +2,9 @@ import 'package:cross_platform_chat_app/pages/accounts/app_accounts_linked_page.
 import 'package:cross_platform_chat_app/pages/chat_list/chat_list_page.dart';
 import 'package:cross_platform_chat_app/pages/profile/profile_page.dart';
 import 'package:flutter/material.dart';
+import 'package:cross_platform_chat_app/theme/app_colors.dart';
+
+import '../../main.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -40,6 +43,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+
     final List<Widget> pages = [
       ChatListPage(searchQuery: searchQuery),
       const AccountsPage(),
@@ -47,23 +52,23 @@ class _HomePageState extends State<HomePage> {
     ];
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.primaryy(brightness).withOpacity(0.1), // veya AppColors.background(brightness)
       appBar: AppBar(
-        shadowColor: Colors.black,
+        shadowColor: AppColors.primaryy(brightness).withOpacity(0.2),
         elevation: 0.5,
         scrolledUnderElevation: 0.5,
-        backgroundColor: Colors.white,
-        title: currentPageIndex == 0 // 🆕 Sadece Sohbetler sayfasında arama
+        backgroundColor: AppColors.primaryy(brightness),
+        title: currentPageIndex == 0
             ? (isSearching
             ? TextField(
           controller: _searchController,
           autofocus: true,
-          cursorColor: Colors.black,
-          style: const TextStyle(color: Colors.black),
-          decoration: const InputDecoration(
+          cursorColor: AppColors.primaryy(brightness).withOpacity(0.1),
+          style:  TextStyle(color: AppColors.text(brightness)),
+          decoration:  InputDecoration(
             hintText: 'Sohbet Ara...',
             border: InputBorder.none,
-            hintStyle: TextStyle(color: Colors.black54),
+            hintStyle: TextStyle(color: AppColors.text(brightness)),
           ),
           onChanged: (value) {
             setState(() {
@@ -85,36 +90,51 @@ class _HomePageState extends State<HomePage> {
             fontFamily: "MyTitleFont",
           ),
         ),
-        leading: currentPageIndex == 0 && isSearching // 🔙 Geri tuşu sadece Sohbetlerde ve arama açıkken
+        leading: currentPageIndex == 0 && isSearching
             ? IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon:  Icon(Icons.arrow_back, color: AppColors.text(brightness)),
           onPressed: stopSearch,
         )
             : null,
-        actions: currentPageIndex == 0 && !isSearching // 🔍 Arama ikonu sadece Sohbetlerde ve arama kapalıyken
-            ? [
+        actions: [
+          // Arama ikonu
+          if (currentPageIndex == 0 && !isSearching)
+            IconButton(
+              onPressed: startSearch,
+              icon:  Icon(Icons.search, color: AppColors.text(brightness)),
+              padding: const EdgeInsets.only(right: 8),
+              iconSize: 28,
+            ),
+
+          // Tema değiştirme ikonu
           IconButton(
-            onPressed: startSearch,
-            icon: const Icon(Icons.search, color: Colors.black),
-            padding: const EdgeInsets.only(right: 20),
-            iconSize: 30,
+            onPressed: () {
+              MyApp.of(context).toggleTheme();
+            },
+            icon: Icon(
+              Theme.of(context).brightness == Brightness.dark
+                  ? Icons.wb_sunny_outlined
+                  : Icons.nights_stay_outlined,
+              color: AppColors.text(brightness),
+              size: 28,
+            ),
+            padding: const EdgeInsets.only(right: 16),
           ),
-        ]
-            : [],
+        ],
       ),
       bottomNavigationBar: NavigationBar(
-        backgroundColor: Colors.white,
-
+        backgroundColor: AppColors.primaryy(brightness),
         onDestinationSelected: (int index) {
           setState(() {
             currentPageIndex = index;
-            if (index != 0) {
-              // Sohbetler dışına çıkınca aramayı kapat
-              stopSearch();
-            }
+            if (index != 0) stopSearch();
           });
         },
+        labelTextStyle: MaterialStateProperty.all(
+          TextStyle(color: AppColors.text(brightness)),
+        ),
         indicatorColor: Colors.amber,
+
         selectedIndex: currentPageIndex,
         destinations: const [
           NavigationDestination(
@@ -126,6 +146,7 @@ class _HomePageState extends State<HomePage> {
             selectedIcon: Icon(Icons.account_tree_rounded),
             icon: Icon(Icons.account_tree_outlined),
             label: 'Hesaplar',
+
           ),
           NavigationDestination(
             selectedIcon: Icon(Icons.account_circle),
@@ -136,5 +157,6 @@ class _HomePageState extends State<HomePage> {
       ),
       body: pages[currentPageIndex],
     );
+
   }
 }

@@ -22,14 +22,12 @@ class _FullscreenVideoPlayerPageState extends State<FullscreenVideoPlayerPage> {
     super.initState();
     _controller = VideoPlayerController.file(File(widget.videoPath))
       ..initialize().then((_) {
-        setState(() {}); // İlk frame gösterilsin diye
+        setState(() {});
         _controller.play();
       });
 
     _listener = () {
-      if (mounted) {
-        setState(() {}); // Sürekli zamanı ve progress barı güncelle
-      }
+      if (mounted) setState(() {});
     };
     _controller.addListener(_listener);
   }
@@ -41,11 +39,9 @@ class _FullscreenVideoPlayerPageState extends State<FullscreenVideoPlayerPage> {
     super.dispose();
   }
 
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
+  String _formatDuration(Duration d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
   }
 
   @override
@@ -53,11 +49,7 @@ class _FullscreenVideoPlayerPageState extends State<FullscreenVideoPlayerPage> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onTap: () {
-          setState(() {
-            _showControls = !_showControls;
-          });
-        },
+        onTap: () => setState(() => _showControls = !_showControls),
         child: Stack(
           children: [
             Center(
@@ -68,6 +60,27 @@ class _FullscreenVideoPlayerPageState extends State<FullscreenVideoPlayerPage> {
               )
                   : const CircularProgressIndicator(color: Colors.white),
             ),
+            // Kapatma butonu sol üst köşede
+            if (_showControls)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 8,
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
             if (_showControls)
               Positioned(
                 bottom: 30,
@@ -94,18 +107,12 @@ class _FullscreenVideoPlayerPageState extends State<FullscreenVideoPlayerPage> {
                         ),
                         IconButton(
                           icon: Icon(
-                            _controller.value.isPlaying
-                                ? Icons.pause
-                                : Icons.play_arrow,
+                            _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
                             color: Colors.white,
                             size: 36,
                           ),
                           onPressed: () {
-                            if (_controller.value.isPlaying) {
-                              _controller.pause();
-                            } else {
-                              _controller.play();
-                            }
+                            _controller.value.isPlaying ? _controller.pause() : _controller.play();
                           },
                         ),
                         Text(
