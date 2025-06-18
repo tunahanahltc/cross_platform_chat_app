@@ -215,20 +215,36 @@ class _ChatPageState extends State<ChatPage> {
     final picker = ImagePicker();
     final source = await showDialog<ImageSource>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Video Gönder'),
-        content: const Text('Videoyu nereden seçmek istiyorsun?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, ImageSource.camera),
-            child: const Text('Kamera'),
+      builder: (context) {
+        final brightness = Theme.of(context).brightness;
+        final bgColor    = AppColors.primaryy(brightness);
+        final textColor  = AppColors.text(brightness);
+        final primary    = AppColors.text(brightness);
+
+        return AlertDialog(
+          backgroundColor: bgColor,
+          title: Text(
+            'Video Gönder',
+            style: TextStyle(color: textColor),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, ImageSource.gallery),
-            child: const Text('Galeri'),
+          content: Text(
+            'Videoyu nereden seçmek istiyorsun?',
+            style: TextStyle(color: textColor.withOpacity(0.8)),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: primary),
+              onPressed: () => Navigator.pop(context, ImageSource.camera),
+              child: Text('Kamera', style: TextStyle(color: primary)),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: primary),
+              onPressed: () => Navigator.pop(context, ImageSource.gallery),
+              child: Text('Galeri', style: TextStyle(color: primary)),
+            ),
+          ],
+        );
+      },
     );
 
     if (source == null) return;
@@ -305,21 +321,36 @@ class _ChatPageState extends State<ChatPage> {
     final picker = ImagePicker();
     final source = await showDialog<ImageSource>(
       context: context,
-      builder: (context) =>
-          AlertDialog(
-            title: const Text('Fotoğraf Gönder'),
-            content: const Text('Fotoğrafı nereden seçmek istiyorsun?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, ImageSource.camera),
-                child: const Text('Kamera'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, ImageSource.gallery),
-                child: const Text('Galeri'),
-              ),
-            ],
+      builder: (context) {
+        final brightness = Theme.of(context).brightness;
+        final bgColor    = AppColors.primaryy(brightness);
+        final textColor  = AppColors.text(brightness);
+        final primary    = AppColors.text(brightness);
+
+        return AlertDialog(
+          backgroundColor: bgColor,
+          title: Text(
+            'Fotoğraf Gönder',
+            style: TextStyle(color: textColor),
           ),
+          content: Text(
+            'Fotoğrafı nereden seçmek istiyorsun?',
+            style: TextStyle(color: textColor.withOpacity(0.8)),
+          ),
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: primary),
+              onPressed: () => Navigator.pop(context, ImageSource.camera),
+              child: Text('Kamera', style: TextStyle(color: primary)),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: primary),
+              onPressed: () => Navigator.pop(context, ImageSource.gallery),
+              child: Text('Galeri', style: TextStyle(color: primary)),
+            ),
+          ],
+        );
+      },
     );
 
     if (source == null) return;
@@ -328,7 +359,6 @@ class _ChatPageState extends State<ChatPage> {
       _handleSendImageMessage(File(picked.path));
     }
   }
-
   void _handleSendPressed(types.PartialText message) async {
     final token = await _readToken();
     final roomIdEnc = Uri.encodeComponent(widget.chatId);

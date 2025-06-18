@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import '../services/matrix_bluesky_service.dart';
+import '../../theme/app_colors.dart';
 
 class BlueskyLoginDialog extends StatefulWidget {
-  /// BlueskyMatrixService örneği. İçinde `createDmRoomWithBluesky`, `sendMessage`
-  /// ve `getLastBotMessage` metodlarının tanımlı olduğunu varsayıyoruz.
   final BlueskyMatrixService service;
-
-  /// Synapse üzerindeki Bluesky bot hesabının Matrix ID’si (örneğin "@bsky_bot:your.homeserver").
   final String botMatrixId;
 
   const BlueskyLoginDialog({
@@ -20,68 +18,58 @@ class BlueskyLoginDialog extends StatefulWidget {
 }
 
 class _BlueskyLoginDialogState extends State<BlueskyLoginDialog> {
-  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _usernameController    = TextEditingController();
   final TextEditingController _appPasswordController = TextEditingController();
   String? _botResponse;
-  bool _loading = false;
+  bool   _loading     = false;
 
-  /// Burada ilk aşamada bot’la DM odası açılıyor. Elde edilen roomId üzerinden
-  /// sırasıyla "!bsky login", domain, fullUsername ve appPassword gönderiliyor.
-  /// En son da bot’un cevabı `getLastBotMessage(roomId)` ile alınıyor.
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _appPasswordController.dispose();
+    super.dispose();
+  }
+
   Future<void> _startLogin() async {
     final fullUsername = _usernameController.text.trim();
-    final appPassword = _appPasswordController.text.trim();
-
+    final appPassword  = _appPasswordController.text.trim();
     if (fullUsername.isEmpty || appPassword.isEmpty) {
-      setState(() {
-        _botResponse = 'Lütfen kullanıcı adı ve app şifresini girin.';
-      });
+      setState(() => _botResponse = 'Lütfen tüm alanları doldurun.');
       return;
     }
 
-    // "aaaa.bbbb.cccc" → domain kısmını ayır
+    // domain ayrıştırma
     final parts = fullUsername.split('.');
-    String domain;
-    if (parts.length >= 2) {
-      domain = parts.sublist(parts.length - 2).join('.');
-    } else {
-      domain = fullUsername;
-    }
+    final domain = parts.length >= 2
+        ? parts.sublist(parts.length - 2).join('.')
+        : fullUsername;
 
     setState(() {
-      _loading = true;
+      _loading     = true;
       _botResponse = null;
     });
 
     try {
-      // 1) Bot ile DM odası aç
       final roomId = await widget.service.createDmRoomWithBluesky(widget.botMatrixId);
       await Future.delayed(const Duration(seconds: 2));
 
-      // 2) Komutları sırayla gönder
       await widget.service.sendMessage(roomId, "!bsky login");
       await Future.delayed(const Duration(seconds: 2));
-
       await widget.service.sendMessage(roomId, "!bsky $domain");
-      await Future.delayed(const Duration(seconds: 3));
-
+      await Future.delayed(const Duration(seconds: 2));
       await widget.service.sendMessage(roomId, "!bsky $fullUsername");
-      await Future.delayed(const Duration(seconds: 3));
-
+      await Future.delayed(const Duration(seconds: 2));
       await widget.service.sendMessage(roomId, "!bsky $appPassword");
 
-      // 3) Bot cevabını al
       await Future.delayed(const Duration(seconds: 2));
       final lastBotMsg = await widget.service.getLastBotMessage(roomId);
-      setState(() => _botResponse = lastBotMsg ?? 'Bot’tan cevap alınamadı.');
+      setState(() => _botResponse = lastBotMsg ?? 'Bot’tan yanıt alınamadı.');
 
-      // 4) Başarı mesajı varsa dialogdan başarıyla çık
-      if (lastBotMsg != null && lastBotMsg.contains("Successfully logged in as")) {
+      if (lastBotMsg != null && lastBotMsg.contains("Successfully logged in")) {
         Future.delayed(const Duration(milliseconds: 500), () {
           Navigator.of(context).pop(true);
         });
       }
-
     } catch (e) {
       setState(() => _botResponse = 'Hata: $e');
     } finally {
@@ -91,61 +79,89 @@ class _BlueskyLoginDialogState extends State<BlueskyLoginDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final brightness    = Theme.of(context).brightness;
+    final bgColor       = AppColors.primaryy(brightness);
+    final primary       = AppColors.primaryy(brightness);
+    final textColor     = AppColors.text(brightness);
+    final fieldBg       = AppColors.primaryy(brightness);
+    final fieldBorder   = AppColors.text(brightness);
+    final toastBg       = brightness == AppColors.primaryy(brightness);
+
     return AlertDialog(
-      title: const Text("Bluesky Giriş"),
+      backgroundColor: bgColor,
+      title: Text(
+        "Bluesky Giriş",
+        style: TextStyle(color: textColor),
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (!_loading && _botResponse == null) ...[
             TextField(
               controller: _usernameController,
-              decoration: const InputDecoration(
-                labelText: "Kullanıcı Adı (örn: aaaaa.bbbb.cccc)",
-                border: OutlineInputBorder(),
+              cursorColor: primary,
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: fieldBg,
+                labelText: "Kullanıcı Adı (xxx.yyy.zzz)",
+                labelStyle: TextStyle(color: textColor.withOpacity(0.7)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: fieldBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: primary, width: 2),
+                ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             TextField(
               controller: _appPasswordController,
               obscureText: true,
-              decoration: const InputDecoration(
+              cursorColor: primary,
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: fieldBg,
                 labelText: "App Şifresi",
-                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: textColor.withOpacity(0.7)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: fieldBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: primary, width: 2),
+                ),
               ),
             ),
-            const SizedBox(height: 10),
           ],
           if (_loading) ...[
             const SizedBox(height: 20),
-            const Center(child: CircularProgressIndicator()),
+            CircularProgressIndicator(color: primary),
             const SizedBox(height: 20),
           ],
           if (_botResponse != null) ...[
-            const SizedBox(height: 20),
-            const Text(
-              "Bot Cevabı:",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _botResponse!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 18),
-            ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 16),
+            Text("Bot Cevabı:", style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(_botResponse!, textAlign: TextAlign.center, style: TextStyle(color: textColor)),
           ],
         ],
       ),
       actions: [
-        if (!_loading && _botResponse == null) ...[
+        if (!_loading && _botResponse == null)
           TextButton(
             onPressed: _startLogin,
-            child: const Text("Giriş Yap"),
+            style: TextButton.styleFrom(foregroundColor: primary),
+            child: Text("Giriş Yap", style: TextStyle(color: primary)),
           ),
-        ],
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Kapat"),
+          onPressed: () => Navigator.pop(context, false),
+          style: TextButton.styleFrom(foregroundColor: textColor),
+          child: Text("Kapat", style: TextStyle(color: textColor)),
         ),
       ],
     );
