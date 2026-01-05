@@ -256,13 +256,13 @@ flutter pub get
 - [x] Instagram entegrasyonu
 - [x] Twitter entegrasyonu
 - [x] Bluesky entegrasyonu
-- [ ] Sesli ve video çağrı
-- [ ] Uçtan uca şifreleme
-- [ ] Mesaj reaksiyonları ve emoji'ler
+- [x] Sesli ve video çağrı
+- [x] Uçtan uca şifreleme
+- [x] Mesaj reaksiyonları ve emoji'ler
 - [ ] Yazma göstergeleri
 - [ ] Mesaj okuma bildirimleri
 - [ ] Kullanıcı varlık göstergeleri
-- [ ] Filtreleri ile mesaj arama
+- [x] Filtreleri ile mesaj arama
 - [ ] Yönetici paneli
 
 ## Lisans 📄
