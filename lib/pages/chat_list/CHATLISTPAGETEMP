@@ -1,0 +1,164 @@
+// lib/pages/chat_list_page.dart
+import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'chat_page.dart'; // Ayrı ChatPage sınıfını import edin
+
+// Android emulator için localhost yerine 10.0.2.2 kullanın.
+const String matrixBaseUrl = 'http://10.0.2.2:8008';
+
+class ChatListPage extends StatefulWidget {
+  const ChatListPage({Key? key}) : super(key: key);
+
+  @override
+  State<ChatListPage> createState() => _ChatListPageState();
+}
+
+class _ChatListPageState extends State<ChatListPage> {
+  final _storage = const FlutterSecureStorage();
+  List<Map<String, String>> _rooms = [];
+  bool _loading = true;
+  Timer? _poller;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRooms();
+    // Her 10 saniyede bir güncelle
+    _poller = Timer.periodic(const Duration(seconds: 10), (_) => _loadRooms());
+  }
+
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<String> _readToken() async {
+    final token = await _storage.read(key: 'access_token');
+    if (token == null) throw Exception('No access token');
+    return token;
+  }
+
+  Future<String> _getSelfId() async {
+    final token = await _readToken();
+    final resp = await http.get(
+      Uri.parse('$matrixBaseUrl/_matrix/client/v3/account/whoami?access_token=$token'),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to fetch own user ID: ${resp.body}');
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    return data['user_id'] as String;
+  }
+
+  Future<List<Map<String, String>>> _fetchRoomsWithName() async {
+    final token = await _readToken();
+    final joinedResp = await http.get(
+      Uri.parse('$matrixBaseUrl/_matrix/client/v3/joined_rooms?access_token=$token'),
+    );
+    if (joinedResp.statusCode != 200) {
+      throw Exception('Joined rooms fetch failed: ${joinedResp.body}');
+    }
+    final joinedData = jsonDecode(joinedResp.body) as Map<String, dynamic>;
+    final ids = (joinedData['joined_rooms'] as List).cast<String>();
+
+    final selfId = await _getSelfId();
+
+    final futures = ids.map((id) async {
+      final name = await _fetchRoomName(id, selfId);
+      return {'roomId': id, 'name': name};
+    });
+
+    return Future.wait(futures);
+  }
+
+  Future<String> _fetchRoomName(String roomId, String selfId) async {
+    final token = await _readToken();
+    final encodedId = Uri.encodeComponent(roomId);
+    // 1) m.room.name
+    final nameResp = await http.get(
+      Uri.parse('$matrixBaseUrl/_matrix/client/v3/rooms/$encodedId/state/m.room.name?access_token=$token'),
+    );
+    if (nameResp.statusCode == 200) {
+      final data = jsonDecode(nameResp.body) as Map<String, dynamic>;
+      final name = data['name'] as String?;
+      if (name != null && name.isNotEmpty) return name;
+    }
+    // 2) joined_members fallback
+    final memResp = await http.get(
+      Uri.parse('$matrixBaseUrl/_matrix/client/v3/rooms/$encodedId/joined_members?access_token=$token'),
+    );
+    if (memResp.statusCode == 200) {
+      final md = jsonDecode(memResp.body) as Map<String, dynamic>;
+      final joined = md['joined'] as Map<String, dynamic>;
+      for (var uid in joined.keys) {
+        if (uid == selfId) continue;
+        final info = joined[uid] as Map<String, dynamic>;
+        final disp = info['display_name'] as String?;
+        return (disp != null && disp.isNotEmpty) ? disp : uid;
+      }
+    }
+    // 3) fallback
+    return roomId;
+  }
+
+  Future<void> _loadRooms() async {
+    try {
+      final rooms = await _fetchRoomsWithName();
+      setState(() {
+        _rooms = rooms;
+        _loading = false;
+      });
+    } catch (e) {
+      // hata durumunda hala göstermek için setState
+      setState(() { _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_rooms.isEmpty) {
+      return const Scaffold(
+        body: Center(child: Text('Henüz hiçbir sohbet yok.')),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Telegram Sohbetleri')),
+      body: ListView.builder(
+        itemCount: _rooms.length,
+        itemBuilder: (context, index) {
+          final room = _rooms[index];
+          final roomId = room['roomId']!;
+          final displayName = room['name']!;
+          return Card(
+            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.chat)),
+              title: Text(displayName),
+              subtitle: Text(roomId),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChatPage(
+                      chatId: roomId,
+                      chatTitle: displayName,
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
